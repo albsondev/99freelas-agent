@@ -1,0 +1,35 @@
+{
+  "name": "99freelas-ai-agent",
+  "version": "0.1.0",
+  "private": true,
+  "packageManager": "pnpm@10.10.0",
+  "scripts": {
+    "dev": "turbo run dev --parallel",
+    "dev:api": "pnpm --filter @99freelas/api dev",
+    "dev:worker": "pnpm --filter @99freelas/worker dev",
+    "dev:dashboard": "pnpm --filter @99freelas/dashboard dev",
+    "build": "turbo run build",
+    "lint": "turbo run lint",
+    "typecheck": "turbo run typecheck",
+    "test": "turbo run test",
+    "test:unit": "turbo run test:unit",
+    "test:e2e": "turbo run test:e2e",
+    "auth:99freelas": "pnpm --filter @99freelas/worker auth:99freelas",
+    "import:url": "pnpm --filter @99freelas/api import:url",
+    "proposal:generate": "pnpm --filter @99freelas/worker proposal:generate",
+    "proposal:submit": "pnpm --filter @99freelas/worker proposal:submit",
+    "db:migrate": "supabase migration up",
+    "db:types": "supabase gen types typescript --local > packages/integrations/src/supabase/database.types.ts"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.3",
+    "@types/react": "^19.1.6",
+    "@types/react-dom": "^19.1.5",
+    "eslint": "^9.28.0",
+    "prettier": "^3.5.3",
+    "turbo": "^2.5.3",
+    "tsx": "^4.20.2",
+    "typescript": "^5.8.3",
+    "vitest": "^3.2.4"
+  }
+}
