@@ -4,7 +4,7 @@ Monorepo para um agente de apoio operacional no 99Freelas, com foco em captacao 
 
 ## Status atual
 
-As tres primeiras entregas agora cobrem a base do monorepo, a persistencia e a API administrativa:
+As quatro primeiras entregas agora cobrem a base do monorepo, a persistencia, a API administrativa e o pipeline inicial de filas:
 
 - workspace `pnpm` com monorepo `apps/*` e `packages/*`
 - configuracao compartilhada de TypeScript
@@ -17,6 +17,9 @@ As tres primeiras entregas agora cobrem a base do monorepo, a persistencia e a A
 - plugin admin do Supabase para a API
 - rotas iniciais de `health`, `opportunities`, `proposals`, `settings` e `jobs`
 - importacao manual de URL com deduplicacao e auditoria em `automation_runs`
+- produtor BullMQ compartilhado com Redis
+- worker com processors mockados para `email.poll`, `opportunity.fetch`, `opportunity.parse`, `opportunity.score`, `proposal.submit` e `notification.send`
+- encadeamento real de jobs para mover uma oportunidade de `NEW` ate `QUALIFIED` no modo mockado da Fase 3
 
 ## Limites desta fase
 
@@ -75,9 +78,9 @@ pnpm auth:99freelas
 
 ## Proximos passos
 
-O proximo commit deve entrar na Fase 3:
+O proximo commit deve entrar na Fase 4:
 
-- BullMQ com Redis e nomes de fila oficiais
-- bridge provisoria da API trocada por enqueue real
-- processors iniciais para `opportunity.fetch` e `opportunity.parse`
-- logs de run mais proximos do fluxo definitivo do worker
+- normalizadores puros para moeda, prazo e URL
+- `ScoringService`, `PricingService`, `DeadlineService`, `ComplianceValidator` e `DecisionEngine`
+- testes unitarios para o nucleo de regras
+- substituicao gradual dos mocks de score por regras reais

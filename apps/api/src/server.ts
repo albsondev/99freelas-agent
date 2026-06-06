@@ -31,7 +31,7 @@ async function buildServer() {
   });
 
   await registerSupabasePlugin(app, env);
-  await registerQueuesPlugin(app);
+  await registerQueuesPlugin(app, env);
   await registerHealthRoutes(app);
   await registerOpportunityRoutes(app);
   await registerProposalRoutes(app);

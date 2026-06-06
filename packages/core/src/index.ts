@@ -6,5 +6,7 @@ export * from "./domain/opportunity.js";
 export * from "./domain/proposal.js";
 export * from "./domain/setting.js";
 export * from "./domain/user-profile.js";
+export * from "./queue-jobs.js";
+export * from "./queue-names.js";
 export * from "./utils/text.js";
 export * from "./utils/url.js";

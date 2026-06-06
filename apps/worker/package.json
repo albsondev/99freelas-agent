@@ -18,7 +18,8 @@
     "@99freelas/config": "workspace:*",
     "@99freelas/core": "workspace:*",
     "@99freelas/integrations": "workspace:*",
+    "bullmq": "^5.56.1",
+    "ioredis": "^5.7.0",
     "zod": "^3.25.67"
   }
 }
-

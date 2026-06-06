@@ -8,6 +8,7 @@ export type ApiEnv = Pick<
   | "SUPABASE_URL"
   | "SUPABASE_SERVICE_ROLE_KEY"
   | "SUPABASE_STORAGE_BUCKET"
+  | "REDIS_URL"
 >;
 
 export function loadApiEnv(source: NodeJS.ProcessEnv = process.env): ApiEnv {
@@ -20,5 +21,6 @@ export function loadApiEnv(source: NodeJS.ProcessEnv = process.env): ApiEnv {
     SUPABASE_URL: env.SUPABASE_URL,
     SUPABASE_SERVICE_ROLE_KEY: env.SUPABASE_SERVICE_ROLE_KEY,
     SUPABASE_STORAGE_BUCKET: env.SUPABASE_STORAGE_BUCKET,
+    REDIS_URL: env.REDIS_URL,
   };
 }

@@ -123,11 +123,8 @@ export async function registerProposalRoutes(
       });
     }
 
-    const processing = await app.queueBridge.enqueueJob({
-      type: "proposal.submit",
-      metadata: {
-        proposalId: id,
-      },
+    const processing = await app.queueBridge.enqueueProposalSubmit({
+      proposalId: id,
     });
 
     return reply.code(202).send({

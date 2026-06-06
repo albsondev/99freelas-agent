@@ -5,7 +5,12 @@ import type {
   SettingsRepository,
   UserProfileRepository,
 } from "@99freelas/integrations";
-import type { JsonValue } from "@99freelas/core";
+import type {
+  EmailPollJobPayload,
+  NotificationSendJobPayload,
+  OpportunityFetchSweepJobPayload,
+  ProposalSubmitJobPayload,
+} from "@99freelas/core";
 
 declare module "fastify" {
   interface FastifyInstance {
@@ -21,10 +26,19 @@ declare module "fastify" {
         opportunityId: string;
         reason: "IMPORT_URL" | "PROCESS" | "REPROCESS";
       }) => Promise<{ runId: string; status: "QUEUED" }>;
-      enqueueJob: (input: {
-        type: string;
-        metadata?: Record<string, JsonValue>;
-      }) => Promise<{ runId: string; status: "QUEUED" }>;
+      enqueueEmailPoll: (input: Omit<EmailPollJobPayload, "runId">) => Promise<{
+        runId: string;
+        status: "QUEUED";
+      }>;
+      enqueueProposalSubmit: (
+        input: Omit<ProposalSubmitJobPayload, "runId">,
+      ) => Promise<{ runId: string; status: "QUEUED" }>;
+      enqueueNotification: (
+        input: Omit<NotificationSendJobPayload, "runId">,
+      ) => Promise<{ runId: string; status: "QUEUED" }>;
+      enqueueSweep: (
+        input: Omit<OpportunityFetchSweepJobPayload, "runId">,
+      ) => Promise<{ runId: string; status: "QUEUED" }>;
     };
   }
 }
