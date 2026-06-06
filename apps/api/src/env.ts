@@ -1,13 +1,24 @@
-import { z } from "zod";
+import { loadAppEnv, type AppEnv } from "@99freelas/config";
 
-const apiEnvSchema = z.object({
-  NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
-  API_PORT: z.coerce.number().int().positive().default(3333),
-});
-
-export type ApiEnv = z.infer<typeof apiEnvSchema>;
+export type ApiEnv = Pick<
+  AppEnv,
+  | "NODE_ENV"
+  | "API_PORT"
+  | "API_BASE_URL"
+  | "SUPABASE_URL"
+  | "SUPABASE_SERVICE_ROLE_KEY"
+  | "SUPABASE_STORAGE_BUCKET"
+>;
 
 export function loadApiEnv(source: NodeJS.ProcessEnv = process.env): ApiEnv {
-  return apiEnvSchema.parse(source);
-}
+  const env = loadAppEnv(source);
 
+  return {
+    NODE_ENV: env.NODE_ENV,
+    API_PORT: env.API_PORT,
+    API_BASE_URL: env.API_BASE_URL,
+    SUPABASE_URL: env.SUPABASE_URL,
+    SUPABASE_SERVICE_ROLE_KEY: env.SUPABASE_SERVICE_ROLE_KEY,
+    SUPABASE_STORAGE_BUCKET: env.SUPABASE_STORAGE_BUCKET,
+  };
+}

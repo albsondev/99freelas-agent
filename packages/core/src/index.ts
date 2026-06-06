@@ -1,6 +1,9 @@
+export * from "./domain/automation-run.js";
+export * from "./domain/daily-counter.js";
 export * from "./domain/decision.js";
+export * from "./domain/json.js";
 export * from "./domain/opportunity.js";
 export * from "./domain/proposal.js";
+export * from "./domain/setting.js";
 export * from "./domain/user-profile.js";
 export * from "./utils/text.js";
-

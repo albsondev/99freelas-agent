@@ -4,19 +4,23 @@ Monorepo para um agente de apoio operacional no 99Freelas, com foco em captacao 
 
 ## Status atual
 
-Esta primeira entrega monta a fundacao do projeto:
+As duas primeiras entregas agora cobrem a base do monorepo e a fundacao de persistencia:
 
 - workspace `pnpm` com monorepo `apps/*` e `packages/*`
 - configuracao compartilhada de TypeScript
 - estrutura inicial de API, worker, dashboard e pacotes de dominio
 - `.env.example`, `docker-compose.yml` e `.gitignore`
-- README base com arquitetura e fases
+- schema inicial do Supabase com migrations, seed e `config.toml`
+- repositories base para oportunidades, propostas, settings, profiles e logs
+- validacao centralizada de ambiente com `Zod`
 
 ## Limites desta fase
 
-O repositorio ainda nao executa integracoes reais com 99Freelas, Supabase, Redis ou OpenAI.
+O repositorio ainda nao executa integracoes reais com 99Freelas, Redis ou OpenAI.
 
 Tambem deixei a base configurada com `AUTOMATION_MODE="REVIEW_REQUIRED"` por padrao. A ideia aqui e comecar com um pipeline auditavel e seguro antes de habilitar qualquer submissao real. Isso protege sua conta, reputacao e evita automacoes ruins logo no inicio.
+
+No Supabase, configurei `auto_expose_new_tables = false` em `supabase/config.toml`. Essa escolha acompanha a direcao mais recente da plataforma e evita expor tabelas novas sem `GRANT` explicito.
 
 ## Arquitetura planejada
 
@@ -67,10 +71,9 @@ pnpm auth:99freelas
 
 ## Proximos passos
 
-O proximo commit deve entrar na Fase 1:
+O proximo commit deve entrar na Fase 2:
 
-- migrations iniciais do Supabase
-- tipos de dominio mais completos
-- repositories base para oportunidades, propostas e runs
-- validacao centralizada de ambiente com Zod
-
+- servidor Fastify com plugins de Supabase e filas
+- endpoints de health, opportunities, proposals, settings e jobs
+- importacao manual de URL com deduplicacao
+- contrato inicial da API administrativa

@@ -1,5 +1,6 @@
 export type UserProfile = {
   id: string;
+  userId: string;
   displayName: string;
   headline?: string;
   seniority: string;
@@ -12,5 +13,6 @@ export type UserProfile = {
   defaultHourlyRateBrl: number;
   proposalTone: string;
   portfolioSummary?: string;
+  createdAt: string;
+  updatedAt: string;
 };
-

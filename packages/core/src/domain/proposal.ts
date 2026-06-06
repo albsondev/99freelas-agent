@@ -1,4 +1,8 @@
-import type { AutomationMode, SubmissionStatus } from "./decision.js";
+import type {
+  AutomationMode,
+  ComplianceStatus,
+  SubmissionStatus,
+} from "./decision.js";
 
 export type Proposal = {
   id: string;
@@ -11,10 +15,22 @@ export type Proposal = {
   assumptions: string[];
   questions: string[];
   risks: string[];
+  llmProvider?: string;
+  llmModel?: string;
+  llmPromptVersion?: string;
+  qualityScore?: number | null;
   complianceFlags: string[];
-  complianceStatus: "PENDING" | "APPROVED" | "REVIEW_REQUIRED" | "BLOCKED";
+  complianceStatus: ComplianceStatus;
+  pricingStrategy?: string;
+  pricingExplanation?: string;
+  deadlineStrategy?: string;
+  deadlineExplanation?: string;
   submissionStatus: SubmissionStatus;
+  submittedAt?: string;
+  submissionError?: string;
+  beforeScreenshotPath?: string;
+  afterScreenshotPath?: string;
+  htmlSnapshotPath?: string;
   createdAt: string;
   updatedAt: string;
 };
-

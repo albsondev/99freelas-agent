@@ -19,6 +19,12 @@ export type OpportunityDecision =
   | "REJECTED"
   | "FAILED";
 
+export type ComplianceStatus =
+  | "PENDING"
+  | "APPROVED"
+  | "REVIEW_REQUIRED"
+  | "BLOCKED";
+
 export type SubmissionStatus =
   | "NOT_SUBMITTED"
   | "PENDING"
@@ -26,4 +32,3 @@ export type SubmissionStatus =
   | "FAILED"
   | "FAILED_REQUIRES_MANUAL_ACTION"
   | "DUPLICATED";
-

@@ -1,13 +1,24 @@
-import { z } from "zod";
+import { loadAppEnv, type AppEnv } from "@99freelas/config";
 
-const workerEnvSchema = z.object({
-  NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
-  AUTOMATION_MODE: z.enum(["DRY_RUN", "REVIEW_REQUIRED", "AUTOPILOT"]).default("REVIEW_REQUIRED"),
-});
-
-export type WorkerEnv = z.infer<typeof workerEnvSchema>;
+export type WorkerEnv = Pick<
+  AppEnv,
+  | "NODE_ENV"
+  | "AUTOMATION_MODE"
+  | "SUPABASE_URL"
+  | "SUPABASE_SERVICE_ROLE_KEY"
+  | "SUPABASE_STORAGE_BUCKET"
+  | "REDIS_URL"
+>;
 
 export function loadWorkerEnv(source: NodeJS.ProcessEnv = process.env): WorkerEnv {
-  return workerEnvSchema.parse(source);
-}
+  const env = loadAppEnv(source);
 
+  return {
+    NODE_ENV: env.NODE_ENV,
+    AUTOMATION_MODE: env.AUTOMATION_MODE,
+    SUPABASE_URL: env.SUPABASE_URL,
+    SUPABASE_SERVICE_ROLE_KEY: env.SUPABASE_SERVICE_ROLE_KEY,
+    SUPABASE_STORAGE_BUCKET: env.SUPABASE_STORAGE_BUCKET,
+    REDIS_URL: env.REDIS_URL,
+  };
+}
