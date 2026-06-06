@@ -4,7 +4,7 @@ Monorepo para um agente de apoio operacional no 99Freelas, com foco em captacao 
 
 ## Status atual
 
-As duas primeiras entregas agora cobrem a base do monorepo e a fundacao de persistencia:
+As tres primeiras entregas agora cobrem a base do monorepo, a persistencia e a API administrativa:
 
 - workspace `pnpm` com monorepo `apps/*` e `packages/*`
 - configuracao compartilhada de TypeScript
@@ -13,6 +13,10 @@ As duas primeiras entregas agora cobrem a base do monorepo e a fundacao de persi
 - schema inicial do Supabase com migrations, seed e `config.toml`
 - repositories base para oportunidades, propostas, settings, profiles e logs
 - validacao centralizada de ambiente com `Zod`
+- servidor Fastify com tratamento basico de erro
+- plugin admin do Supabase para a API
+- rotas iniciais de `health`, `opportunities`, `proposals`, `settings` e `jobs`
+- importacao manual de URL com deduplicacao e auditoria em `automation_runs`
 
 ## Limites desta fase
 
@@ -71,9 +75,9 @@ pnpm auth:99freelas
 
 ## Proximos passos
 
-O proximo commit deve entrar na Fase 2:
+O proximo commit deve entrar na Fase 3:
 
-- servidor Fastify com plugins de Supabase e filas
-- endpoints de health, opportunities, proposals, settings e jobs
-- importacao manual de URL com deduplicacao
-- contrato inicial da API administrativa
+- BullMQ com Redis e nomes de fila oficiais
+- bridge provisoria da API trocada por enqueue real
+- processors iniciais para `opportunity.fetch` e `opportunity.parse`
+- logs de run mais proximos do fluxo definitivo do worker

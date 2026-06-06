@@ -5,15 +5,35 @@ import { loadAppEnv } from "@99freelas/config";
 import type { Database } from "./database.types.js";
 
 export type DatabaseClient = SupabaseClient<Database>;
+type SupabaseClientOptions = {
+  supabaseUrl: string;
+  supabaseKey: string;
+};
+
+function resolveClientOptions(
+  input?: SupabaseClientOptions | NodeJS.ProcessEnv,
+  keyName: "SUPABASE_SERVICE_ROLE_KEY" | "SUPABASE_ANON_KEY" = "SUPABASE_SERVICE_ROLE_KEY",
+): SupabaseClientOptions {
+  if (input && "supabaseUrl" in input && "supabaseKey" in input) {
+    return input;
+  }
+
+  const env = loadAppEnv(input);
+
+  return {
+    supabaseUrl: env.SUPABASE_URL,
+    supabaseKey: env[keyName],
+  };
+}
 
 export function createSupabaseAdminClient(
-  source: NodeJS.ProcessEnv = process.env,
+  input?: SupabaseClientOptions | NodeJS.ProcessEnv,
 ): DatabaseClient {
-  const env = loadAppEnv(source);
+  const options = resolveClientOptions(input, "SUPABASE_SERVICE_ROLE_KEY");
 
   return createClient<Database>(
-    env.SUPABASE_URL,
-    env.SUPABASE_SERVICE_ROLE_KEY,
+    options.supabaseUrl,
+    options.supabaseKey,
     {
       auth: {
         autoRefreshToken: false,
@@ -24,11 +44,11 @@ export function createSupabaseAdminClient(
 }
 
 export function createSupabaseAnonClient(
-  source: NodeJS.ProcessEnv = process.env,
+  input?: SupabaseClientOptions | NodeJS.ProcessEnv,
 ): DatabaseClient {
-  const env = loadAppEnv(source);
+  const options = resolveClientOptions(input, "SUPABASE_ANON_KEY");
 
-  return createClient<Database>(env.SUPABASE_URL, env.SUPABASE_ANON_KEY);
+  return createClient<Database>(options.supabaseUrl, options.supabaseKey);
 }
 
 export function assertSupabaseSingle<T>(
@@ -58,4 +78,3 @@ export function assertSupabaseMany<T>(
 
   return data ?? [];
 }
-

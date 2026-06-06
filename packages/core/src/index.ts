@@ -7,3 +7,4 @@ export * from "./domain/proposal.js";
 export * from "./domain/setting.js";
 export * from "./domain/user-profile.js";
 export * from "./utils/text.js";
+export * from "./utils/url.js";
