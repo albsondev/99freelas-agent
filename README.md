@@ -4,7 +4,7 @@ Monorepo para um agente de apoio operacional no 99Freelas, com foco em captacao 
 
 ## Status atual
 
-As quatro primeiras entregas agora cobrem a base do monorepo, a persistencia, a API administrativa e o pipeline inicial de filas:
+As cinco primeiras entregas agora cobrem a base do monorepo, a persistencia, a API administrativa, o pipeline inicial de filas e o nucleo de regras:
 
 - workspace `pnpm` com monorepo `apps/*` e `packages/*`
 - configuracao compartilhada de TypeScript
@@ -20,6 +20,10 @@ As quatro primeiras entregas agora cobrem a base do monorepo, a persistencia, a 
 - produtor BullMQ compartilhado com Redis
 - worker com processors mockados para `email.poll`, `opportunity.fetch`, `opportunity.parse`, `opportunity.score`, `proposal.submit` e `notification.send`
 - encadeamento real de jobs para mover uma oportunidade de `NEW` ate `QUALIFIED` no modo mockado da Fase 3
+- normalizadores puros para moeda, prazo, skills, sanitizacao e sinais de risco
+- `OpportunityScoringService`, `PricingService`, `DeadlineService`, `ComplianceValidatorService` e `DecisionEngineService`
+- testes unitarios para o nucleo de regras no pacote `core`
+- worker usando score real baseado em regras em vez de score fixo
 
 ## Limites desta fase
 
@@ -78,9 +82,9 @@ pnpm auth:99freelas
 
 ## Proximos passos
 
-O proximo commit deve entrar na Fase 4:
+O proximo commit deve entrar na Fase 5:
 
-- normalizadores puros para moeda, prazo e URL
-- `ScoringService`, `PricingService`, `DeadlineService`, `ComplianceValidator` e `DecisionEngine`
-- testes unitarios para o nucleo de regras
-- substituicao gradual dos mocks de score por regras reais
+- integrar LLM provider real e prompt versionado
+- gerar propostas estruturadas em JSON com validacao
+- salvar propostas no Supabase com compliance aplicado
+- preparar a transicao do worker de score para geracao de proposta

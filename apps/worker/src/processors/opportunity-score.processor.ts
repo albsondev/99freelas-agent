@@ -1,4 +1,7 @@
-import type { OpportunityScoreJobPayload } from "@99freelas/core";
+import {
+  OpportunityScoringService,
+  type OpportunityScoreJobPayload,
+} from "@99freelas/core";
 import type {
   AutomationRunRepository,
   OpportunityRepository,
@@ -13,6 +16,8 @@ export async function processOpportunityScoreJob(
   payload: OpportunityScoreJobPayload,
   context: ProcessOpportunityScoreContext,
 ): Promise<void> {
+  const scoringService = new OpportunityScoringService();
+
   await context.runs.update(payload.runId, {
     status: "PROCESSING",
   });
@@ -29,20 +34,27 @@ export async function processOpportunityScoreJob(
     return;
   }
 
-  const score =
-    opportunity.title || opportunity.description ? 68 : 40;
+  const result = scoringService.score({
+    title: opportunity.title ?? "",
+    description: opportunity.description ?? "",
+    category: opportunity.category ?? "",
+    skills: opportunity.skills,
+    budgetMin: opportunity.budgetMin ?? null,
+    budgetMax: opportunity.budgetMax ?? null,
+    averageBidAmount: opportunity.averageBidAmount ?? null,
+    averageDeadlineDays: opportunity.averageDeadlineDays ?? null,
+    proposalCount: opportunity.proposalCount ?? null,
+    clientRating: opportunity.clientRating ?? null,
+  });
 
   await context.opportunities.update(payload.opportunityId, {
-    status: score >= 60 ? "QUALIFIED" : "REJECTED",
-    score,
-    decision: score >= 60 ? "REVIEW_REQUIRED" : "REJECTED",
-    decision_reasons:
-      score >= 60
-        ? ["MOCK_SCORE_PIPELINE_READY_FOR_PHASE_4"]
-        : ["INSUFFICIENT_CONTEXT_IN_MOCK_PIPELINE"],
-    risk_flags: score >= 60 ? ["SCORING_RULES_PENDING"] : ["LOW_SIGNAL_INPUT"],
-    matched_skills: [],
-    missing_skills: [],
+    status: result.decisionHint === "REJECTED" ? "REJECTED" : "QUALIFIED",
+    score: result.score,
+    decision: result.decisionHint,
+    decision_reasons: result.reasons,
+    risk_flags: result.riskFlags,
+    matched_skills: result.matchedSkills,
+    missing_skills: result.missingSkills,
   });
 
   await context.runs.update(payload.runId, {
@@ -50,9 +62,9 @@ export async function processOpportunityScoreJob(
     finished_at: new Date().toISOString(),
     metadata: {
       opportunityId: payload.opportunityId,
-      score,
-      result: score >= 60 ? "QUALIFIED" : "REJECTED",
+      score: result.score,
+      decisionHint: result.decisionHint,
+      result: result.decisionHint === "REJECTED" ? "REJECTED" : "QUALIFIED",
     },
   });
 }
-

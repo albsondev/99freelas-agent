@@ -1,5 +1,6 @@
 import {
   QueueNames,
+  extractSkills,
   type JsonValue,
   type OpportunityParseJobPayload,
 } from "@99freelas/core";
@@ -49,16 +50,21 @@ export async function processOpportunityParseJob(
   const fallbackDescription =
     opportunity.description ??
     "Descricao ainda nao extraida do HTML real. Pipeline em modo mockado na Fase 3.";
+  const detectedSkills = extractSkills(
+    [fallbackTitle, fallbackDescription, opportunity.category ?? ""].join(" "),
+  );
 
   await context.opportunities.update(payload.opportunityId, {
     title: fallbackTitle,
     description: fallbackDescription,
+    skills: opportunity.skills.length > 0 ? opportunity.skills : detectedSkills,
     status: "PARSED",
     raw_payload: {
       ...asJsonObject(opportunity.rawPayload),
       parse: {
         parsedAt: new Date().toISOString(),
         parser: "mock-phase-3",
+        detectedSkills,
       },
     },
   });
