@@ -156,6 +156,7 @@ async function main() {
       proposalPageUrl: opportunity.url,
       screenshotPath: `${env.BROWSER_SCREENSHOT_DIR}/proposal-prefill-${proposal.id}.png`,
       storageStatePath: env.BROWSER_STORAGE_STATE_PATH,
+      userDataDir: env.BROWSER_USER_DATA_DIR,
     });
 
     await proposals.update(proposal.id, {

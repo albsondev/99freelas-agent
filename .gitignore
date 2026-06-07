@@ -9,5 +9,6 @@ coverage
 .env.local
 .auth
 .audit
+.temp
 supabase/.temp
 *.tsbuildinfo

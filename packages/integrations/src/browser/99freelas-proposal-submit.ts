@@ -1,8 +1,7 @@
 import { mkdir } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 
-import { chromium } from "playwright";
-
+import { open99FreelasSessionContext } from "./99freelas-auth.js";
 import {
   build99FreelasProposalPageUrl,
   format99FreelasDeadlineInput,
@@ -21,6 +20,7 @@ export type MockSubmit99FreelasProposalInput = {
   headless?: boolean;
   proposalPageUrl: string;
   storageStatePath: string;
+  userDataDir?: string;
   timeoutMs?: number;
   beforeScreenshotPath?: string;
   afterScreenshotPath?: string;
@@ -99,16 +99,14 @@ async function run99FreelasProposalSubmission(
   input: Submit99FreelasProposalInput,
   executeSubmit: boolean,
 ): Promise<ProposalSubmissionBrowserResult> {
-  const browser = await chromium.launch({
-    channel: "chrome",
+  const opened = await open99FreelasSessionContext({
     headless: input.headless ?? false,
+    storageStatePath: input.storageStatePath,
+    ...(input.userDataDir ? { userDataDir: input.userDataDir } : {}),
   });
 
   try {
-    const context = await browser.newContext({
-      storageState: resolve(input.storageStatePath),
-    });
-    const page = await context.newPage();
+    const page = await opened.context.newPage();
     const timeoutMs = input.timeoutMs ?? DEFAULT_TIMEOUT_MS;
     const proposalPageUrl = build99FreelasProposalPageUrl(input.proposalPageUrl);
     const stepDelayMs = input.observer?.stepDelayMs ?? 1_500;
@@ -310,7 +308,7 @@ async function run99FreelasProposalSubmission(
       ...(afterScreenshotPath ? { afterScreenshotPath } : {}),
     };
   } finally {
-    await browser.close();
+    await opened.close();
   }
 }
 

@@ -24,6 +24,18 @@ export type Authenticate99FreelasOptions = {
   timeoutMs?: number;
 };
 
+export type Open99FreelasSessionContextOptions = {
+  headless?: boolean;
+  storageStatePath: string;
+  userDataDir?: string;
+};
+
+export type Open99FreelasSessionContextResult = {
+  mode: "storage-state" | "persistent-profile";
+  context: BrowserContext;
+  close: () => Promise<void>;
+};
+
 const DEFAULT_TIMEOUT_MS = 120_000;
 const AUTH_COOKIE_HINTS = ["freelas", "session", "auth", "token"];
 
@@ -86,16 +98,10 @@ export async function authenticate99FreelasSession(
 export async function validate99FreelasSession(
   options: Authenticate99FreelasOptions,
 ): Promise<BrowserSessionResult> {
-  const storageStatePath = resolveProjectPath(options.storageStatePath);
-  const browser = await launchPreferredBrowser({
-    headless: options.headless ?? true,
-  });
+  const opened = await open99FreelasSessionContext(options);
 
   try {
-    const context = await browser.newContext({
-      storageState: storageStatePath,
-    });
-    const page = await context.newPage();
+    const page = await opened.context.newPage();
 
     await page.goto(selectors99Freelas.dashboardUrl, {
       waitUntil: "domcontentloaded",
@@ -103,14 +109,54 @@ export async function validate99FreelasSession(
     });
 
     return inspect99FreelasSession({
-      context,
+      context: opened.context,
       page,
-      storageStatePath,
+      storageStatePath: resolveProjectPath(options.storageStatePath),
       timeoutMs: options.timeoutMs ?? DEFAULT_TIMEOUT_MS,
     });
   } finally {
-    await browser.close();
+    await opened.close();
   }
+}
+
+export async function open99FreelasSessionContext(
+  options: Open99FreelasSessionContextOptions,
+): Promise<Open99FreelasSessionContextResult> {
+  const storageStatePath = resolveProjectPath(options.storageStatePath);
+  const userDataDir = resolveProjectPath(
+    options.userDataDir ?? "./.auth/99freelas.chrome-profile",
+  );
+
+  if (existsSync(storageStatePath)) {
+    const browser = await launchPreferredBrowser({
+      headless: options.headless ?? true,
+    });
+    const context = await browser.newContext({
+      storageState: storageStatePath,
+    });
+
+    return {
+      mode: "storage-state",
+      context,
+      close: async () => {
+        await browser.close();
+      },
+    };
+  }
+
+  await mkdir(userDataDir, { recursive: true });
+  const context = await launchPreferredPersistentContext({
+    headless: options.headless ?? false,
+    userDataDir,
+  });
+
+  return {
+    mode: "persistent-profile",
+    context,
+    close: async () => {
+      await context.close();
+    },
+  };
 }
 
 type InspectSessionInput = {

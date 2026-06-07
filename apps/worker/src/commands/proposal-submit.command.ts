@@ -66,6 +66,7 @@ export async function executeProposalSubmitFlow(input: {
     headless: input.env.BROWSER_HEADLESS,
     proposalPageUrl: opportunity.url,
     storageStatePath: input.env.BROWSER_STORAGE_STATE_PATH,
+    userDataDir: input.env.BROWSER_USER_DATA_DIR,
     beforeScreenshotPath: `${input.env.BROWSER_SCREENSHOT_DIR}/proposal-submit-before-${proposal.id}.png`,
     afterScreenshotPath: `${input.env.BROWSER_SCREENSHOT_DIR}/proposal-submit-after-${proposal.id}.png`,
   });
@@ -108,6 +109,7 @@ export async function executeProposalSubmitFlow(input: {
         headless: input.env.BROWSER_HEADLESS,
         proposalPageUrl: opportunity.url,
         storageStatePath: input.env.BROWSER_STORAGE_STATE_PATH,
+        userDataDir: input.env.BROWSER_USER_DATA_DIR,
         beforeScreenshotPath: `${input.env.BROWSER_SCREENSHOT_DIR}/proposal-submit-before-${proposal.id}.png`,
         afterScreenshotPath: `${input.env.BROWSER_SCREENSHOT_DIR}/proposal-submit-after-${proposal.id}.png`,
       });
@@ -192,6 +194,7 @@ export async function executeProposalObserveFlow(input: {
     headless: false,
     proposalPageUrl: opportunity.url,
     storageStatePath: input.env.BROWSER_STORAGE_STATE_PATH,
+    userDataDir: input.env.BROWSER_USER_DATA_DIR,
     beforeScreenshotPath: `${input.env.BROWSER_SCREENSHOT_DIR}/proposal-observe-before-${proposal.id}.png`,
     afterScreenshotPath: `${input.env.BROWSER_SCREENSHOT_DIR}/proposal-observe-after-${proposal.id}.png`,
     observer: {
