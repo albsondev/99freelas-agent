@@ -237,7 +237,7 @@ async function run99FreelasProposalSubmission(
         message: "Pausa curta antes do clique final de envio.",
         currentUrl: page.url(),
       });
-      await waitForObserver(input.observer, stepDelayMs);
+      await waitForObserver(input.observer, input.observer?.holdOpenMs ?? stepDelayMs);
       await submitButton.click();
       await emitObserverStep(input.observer, {
         step: "submit-clicked",

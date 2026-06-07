@@ -186,6 +186,9 @@ async function main() {
       proposalId: readOption("--proposal-id"),
       executeLiveSubmit: process.argv.includes("--live"),
       confirmLiveSubmit: process.argv.includes("--confirm-live-submit"),
+      observeBrowser: process.argv.includes("--observe"),
+      stepDelayMs: readNumberOption("--step-delay-ms"),
+      holdOpenMs: readNumberOption("--hold-ms"),
     });
 
     console.log(

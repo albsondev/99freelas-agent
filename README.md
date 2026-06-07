@@ -50,6 +50,8 @@ Nesta fase, o submit roda em modo seguro: ele preenche, revalida, coleta warning
 
 O `Live Observer Mode - Observacao` usa esse mesmo fluxo, mas com navegador visivel, delays entre etapas, selecao automatica da melhor proposta candidata e pausa antes do envio.
 
+Para o teste `Observacao + Envio`, o mesmo comando de submit agora pode rodar com observacao visual habilitada durante todo o fluxo, inclusive com pausa configuravel antes do clique final.
+
 O clique real ficou preparado, mas so pode acontecer quando todas estas condicoes passam juntas:
 - `AUTOMATION_MODE="AUTOPILOT"`
 - `ENABLE_REAL_99FREELAS_SUBMISSION=true`
@@ -135,3 +137,17 @@ Flags uteis:
 - `--proposal-id <id>` para observar uma proposta especifica
 - `--step-delay-ms 2000` para desacelerar cada etapa observada
 - `--hold-ms 60000` para manter a pagina aberta por mais tempo antes de fechar
+
+## Observacao com envio
+
+Para ver a IA preenchendo a proposta ao vivo e, ao final, efetuar o clique real de envio:
+
+```bash
+pnpm proposal:submit --live --confirm-live-submit --observe
+```
+
+Flags uteis:
+
+- `--proposal-id <id>` para escolher uma proposta especifica
+- `--step-delay-ms 2000` para desacelerar o preenchimento
+- `--hold-ms 15000` para pausar mais tempo antes do clique final

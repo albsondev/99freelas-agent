@@ -38,6 +38,9 @@ export async function processProposalSubmitJob(
     proposalId: payload.proposalId,
     executeLiveSubmit: false,
     confirmLiveSubmit: false,
+    observeBrowser: false,
+    stepDelayMs: undefined,
+    holdOpenMs: undefined,
   });
 
   await context.runs.update(payload.runId, {

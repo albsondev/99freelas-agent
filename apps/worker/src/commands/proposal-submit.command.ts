@@ -37,6 +37,9 @@ export async function executeProposalSubmitFlow(input: {
   proposalId: string | null | undefined;
   executeLiveSubmit: boolean | undefined;
   confirmLiveSubmit: boolean | undefined;
+  observeBrowser: boolean | undefined;
+  stepDelayMs: number | undefined;
+  holdOpenMs: number | undefined;
 }): Promise<ProposalSubmitExecutionResult> {
   const client = createSupabaseAdminClient({
     supabaseUrl: input.env.SUPABASE_URL,
@@ -69,6 +72,18 @@ export async function executeProposalSubmitFlow(input: {
     userDataDir: input.env.BROWSER_USER_DATA_DIR,
     beforeScreenshotPath: `${input.env.BROWSER_SCREENSHOT_DIR}/proposal-submit-before-${proposal.id}.png`,
     afterScreenshotPath: `${input.env.BROWSER_SCREENSHOT_DIR}/proposal-submit-after-${proposal.id}.png`,
+    ...(input.observeBrowser
+      ? {
+          observer: {
+            enabled: true,
+            stepDelayMs: input.stepDelayMs ?? 1_800,
+            holdOpenMs: input.holdOpenMs ?? 12_000,
+            onStep: (event) => {
+              logObserverStep(`[submit:${proposal.id.slice(0, 8)}]`, event);
+            },
+          },
+        }
+      : {}),
   });
 
   const guardrails = new ProposalSubmissionGuardrailsService().evaluate({
@@ -112,6 +127,18 @@ export async function executeProposalSubmitFlow(input: {
         userDataDir: input.env.BROWSER_USER_DATA_DIR,
         beforeScreenshotPath: `${input.env.BROWSER_SCREENSHOT_DIR}/proposal-submit-before-${proposal.id}.png`,
         afterScreenshotPath: `${input.env.BROWSER_SCREENSHOT_DIR}/proposal-submit-after-${proposal.id}.png`,
+        ...(input.observeBrowser
+          ? {
+              observer: {
+                enabled: true,
+                stepDelayMs: input.stepDelayMs ?? 1_800,
+                holdOpenMs: input.holdOpenMs ?? 12_000,
+                onStep: (event) => {
+                  logObserverStep(`[submit:${proposal.id.slice(0, 8)}]`, event);
+                },
+              },
+            }
+          : {}),
       });
 
       liveSubmitted = finalBrowser.submitted;
