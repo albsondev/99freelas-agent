@@ -7,6 +7,21 @@ import { mapUserProfileRow } from "../mappers.js";
 export class UserProfileRepository {
   constructor(private readonly client: DatabaseClient) {}
 
+  async getPrimaryProfile(): Promise<UserProfile | null> {
+    const { data, error } = await this.client
+      .from("user_profiles")
+      .select("*")
+      .order("updated_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (error) {
+      throw new Error(`Failed to fetch primary user profile: ${error.message}`);
+    }
+
+    return data ? mapUserProfileRow(data) : null;
+  }
+
   async getByUserId(userId: string): Promise<UserProfile | null> {
     const { data, error } = await this.client
       .from("user_profiles")
@@ -46,4 +61,3 @@ export class UserProfileRepository {
     );
   }
 }
-

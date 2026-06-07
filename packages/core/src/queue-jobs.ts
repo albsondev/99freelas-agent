@@ -28,6 +28,10 @@ export type OpportunityScoreJobPayload = JobLifecyclePayload & {
   opportunityId: string;
 };
 
+export type ProposalGenerateJobPayload = JobLifecyclePayload & {
+  opportunityId: string;
+};
+
 export type EmailPollJobPayload = JobLifecyclePayload & {
   triggeredBy: "API" | "SCHEDULE";
 };
@@ -47,6 +51,7 @@ export type QueuePayloadByName = {
   "opportunity.fetch": OpportunityFetchJobPayload;
   "opportunity.parse": OpportunityParseJobPayload;
   "opportunity.score": OpportunityScoreJobPayload;
+  "proposal.generate": ProposalGenerateJobPayload;
   "proposal.submit": ProposalSubmitJobPayload;
   "notification.send": NotificationSendJobPayload;
 };

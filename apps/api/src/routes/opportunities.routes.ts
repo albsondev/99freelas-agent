@@ -149,5 +149,24 @@ export async function registerOpportunityRoutes(
       processing,
     });
   });
-}
 
+  app.post("/opportunities/:id/generate-proposal", async (request, reply) => {
+    const { id } = opportunityParamsSchema.parse(request.params);
+    const opportunity = await app.repositories.opportunities.getById(id);
+
+    if (!opportunity) {
+      return reply.code(404).send({
+        message: "Opportunity not found",
+      });
+    }
+
+    const processing = await app.queueBridge.enqueueProposalGeneration({
+      opportunityId: opportunity.id,
+    });
+
+    return reply.code(202).send({
+      opportunityId: opportunity.id,
+      processing,
+    });
+  });
+}

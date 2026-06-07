@@ -6,6 +6,9 @@ import {
   OpportunityRepository,
   ProposalRepository,
   QueueProducer,
+  SettingsRepository,
+  UserProfileRepository,
+  createProposalLlmProvider,
   createRedisConnection,
   createSupabaseAdminClient,
 } from "@99freelas/integrations";
@@ -16,6 +19,7 @@ import { processNotificationSendJob } from "../processors/notification-send.proc
 import { processOpportunityFetchJob } from "../processors/opportunity-fetch.processor.js";
 import { processOpportunityParseJob } from "../processors/opportunity-parse.processor.js";
 import { processOpportunityScoreJob } from "../processors/opportunity-score.processor.js";
+import { processProposalGenerateJob } from "../processors/proposal-generate.processor.js";
 import { processProposalSubmitJob } from "../processors/proposal-submit.processor.js";
 
 type WorkerHandle = {
@@ -33,6 +37,18 @@ export async function registerWorkers(env: WorkerEnv): Promise<WorkerHandle> {
   const runs = new AutomationRunRepository(client);
   const opportunities = new OpportunityRepository(client);
   const proposals = new ProposalRepository(client);
+  const settings = new SettingsRepository(client);
+  const userProfiles = new UserProfileRepository(client);
+  const llm =
+    env.LLM_PROVIDER === "openai" && env.OPENAI_API_KEY
+      ? createProposalLlmProvider({
+          provider: "openai",
+          openAiApiKey: env.OPENAI_API_KEY,
+          openAiModel: env.OPENAI_MODEL,
+          temperature: env.LLM_TEMPERATURE,
+          maxOutputTokens: env.LLM_MAX_TOKENS,
+        })
+      : null;
 
   const workers = [
     new Worker<QueuePayloadByName["email.poll"]>(
@@ -70,6 +86,22 @@ export async function registerWorkers(env: WorkerEnv): Promise<WorkerHandle> {
         await processOpportunityScoreJob(job.data, {
           opportunities,
           runs,
+          producer,
+        });
+      },
+      { connection },
+    ),
+    new Worker<QueuePayloadByName["proposal.generate"]>(
+      QueueNames.PROPOSAL_GENERATE,
+      async (job) => {
+        await processProposalGenerateJob(job.data, {
+          env,
+          opportunities,
+          proposals,
+          runs,
+          settings,
+          userProfiles,
+          llm,
         });
       },
       { connection },
@@ -118,4 +150,3 @@ export async function registerWorkers(env: WorkerEnv): Promise<WorkerHandle> {
     },
   };
 }
-

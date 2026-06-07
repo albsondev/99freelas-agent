@@ -9,6 +9,7 @@ import type {
   EmailPollJobPayload,
   NotificationSendJobPayload,
   OpportunityFetchSweepJobPayload,
+  ProposalGenerateJobPayload,
   ProposalSubmitJobPayload,
 } from "@99freelas/core";
 
@@ -30,6 +31,9 @@ declare module "fastify" {
         runId: string;
         status: "QUEUED";
       }>;
+      enqueueProposalGeneration: (
+        input: Omit<ProposalGenerateJobPayload, "runId">,
+      ) => Promise<{ runId: string; status: "QUEUED" }>;
       enqueueProposalSubmit: (
         input: Omit<ProposalSubmitJobPayload, "runId">,
       ) => Promise<{ runId: string; status: "QUEUED" }>;

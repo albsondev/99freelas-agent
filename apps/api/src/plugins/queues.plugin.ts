@@ -6,6 +6,7 @@ import {
   type NotificationSendJobPayload,
   type OpportunityFetchJobPayload,
   type OpportunityFetchSweepJobPayload,
+  type ProposalGenerateJobPayload,
   type ProposalSubmitJobPayload,
 } from "@99freelas/core";
 import { QueueProducer } from "@99freelas/integrations";
@@ -69,6 +70,32 @@ export async function registerQueuesPlugin(
       });
 
       const job = await producer.enqueue(QueueNames.EMAIL_POLL, {
+        runId: run.id,
+        ...input,
+      });
+
+      await app.repositories.automationRuns.update(run.id, {
+        job_id: job.jobId,
+      });
+
+      return {
+        runId: run.id,
+        status: "QUEUED" as const,
+      };
+    },
+    enqueueProposalGeneration: async (
+      input: Omit<ProposalGenerateJobPayload, "runId">,
+    ) => {
+      const run = await app.repositories.automationRuns.create({
+        type: QueueNames.PROPOSAL_GENERATE,
+        status: "QUEUED",
+        opportunity_id: input.opportunityId,
+        metadata: {
+          source: "api.proposal-generate",
+        },
+      });
+
+      const job = await producer.enqueue(QueueNames.PROPOSAL_GENERATE, {
         runId: run.id,
         ...input,
       });

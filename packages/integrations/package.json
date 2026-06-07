@@ -12,8 +12,10 @@
   "dependencies": {
     "@99freelas/config": "workspace:*",
     "@99freelas/core": "workspace:*",
+    "openai": "^6.2.0",
     "@supabase/supabase-js": "^2.49.8",
     "bullmq": "^5.56.1",
-    "ioredis": "^5.7.0"
+    "ioredis": "^5.7.0",
+    "zod": "^3.25.67"
   }
 }

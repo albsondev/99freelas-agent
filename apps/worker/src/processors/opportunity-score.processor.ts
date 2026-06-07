@@ -1,15 +1,18 @@
 import {
   OpportunityScoringService,
+  QueueNames,
   type OpportunityScoreJobPayload,
 } from "@99freelas/core";
 import type {
   AutomationRunRepository,
   OpportunityRepository,
+  QueueProducer,
 } from "@99freelas/integrations";
 
 type ProcessOpportunityScoreContext = {
   opportunities: OpportunityRepository;
   runs: AutomationRunRepository;
+  producer: QueueProducer;
 };
 
 export async function processOpportunityScoreJob(
@@ -66,5 +69,29 @@ export async function processOpportunityScoreJob(
       decisionHint: result.decisionHint,
       result: result.decisionHint === "REJECTED" ? "REJECTED" : "QUALIFIED",
     },
+  });
+
+  if (result.decisionHint === "REJECTED") {
+    return;
+  }
+
+  const proposalRun = await context.runs.create({
+    type: QueueNames.PROPOSAL_GENERATE,
+    status: "QUEUED",
+    opportunity_id: payload.opportunityId,
+    metadata: {
+      source: "worker.score-processor",
+      parentRunId: payload.runId,
+      score: result.score,
+    },
+  });
+
+  const proposalJob = await context.producer.enqueue(QueueNames.PROPOSAL_GENERATE, {
+    runId: proposalRun.id,
+    opportunityId: payload.opportunityId,
+  });
+
+  await context.runs.update(proposalRun.id, {
+    job_id: proposalJob.jobId,
   });
 }
