@@ -39,12 +39,21 @@ As sete primeiras entregas agora cobrem a base do monorepo, a persistencia, a AP
 - screenshot de auditoria do prefill salvo em `.audit/screenshots`
 - comando `pnpm proposal:submit` em modo mockado para validar o estado final da pagina sem clicar no envio real
 - captura de screenshots antes e depois do preenchimento final para auditoria local
+- guardrails centrais para envio real: score minimo, compliance aprovado, limites por hora/dia, modo `AUTOPILOT`, flag de ambiente e confirmacao explicita de CLI
 
 ## Limites desta fase
 
 O repositorio ainda nao executa o scraper real da oportunidade nem a submissao final do formulario no 99Freelas.
 
 Nesta fase, o submit roda em modo seguro: ele preenche, revalida, coleta warnings, confere se o botao final esta habilitado e registra screenshots, mas nao clica em `Enviar proposta`.
+
+O clique real ficou preparado, mas so pode acontecer quando todas estas condicoes passam juntas:
+- `AUTOMATION_MODE="AUTOPILOT"`
+- `ENABLE_REAL_99FREELAS_SUBMISSION=true`
+- proposta com `compliance_status = APPROVED`
+- oportunidade com decisao `AUTO_SUBMIT` e score acima do minimo configurado
+- limites horario e diario abaixo do teto
+- comando executado com `--live --confirm-live-submit`
 
 Na pratica, a autenticacao automatizada pode ser bloqueada pelo Cloudflare. Quando isso acontecer, a trilha recomendada e reaproveitar uma sessao manual ja autenticada no Chrome e iniciar a automacao a partir de uma aba real do projeto/proposta.
 
@@ -103,8 +112,8 @@ pnpm proposal:submit
 
 ## Proximos passos
 
-Com a Fase 8 em andamento, os proximos passos ficam assim:
+Com a Fase 8 praticamente fechada, os proximos passos ficam assim:
 
-- consolidar o preenchimento real do formulario usando proposta persistida
-- validar erros de pagina, bloqueios e estados intermediarios do submit
-- preparar os guardrails finais antes do envio real
+- validar um envio live controlado com proposta de baixo risco e conta monitorada
+- registrar o resultado final no bucket/auditoria do Supabase
+- decidir quando habilitar o job automatico de submit fora do modo manual

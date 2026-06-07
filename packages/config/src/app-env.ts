@@ -74,6 +74,8 @@ export const appEnvSchema = z.object({
   SAVE_SCREENSHOT_BEFORE_SUBMIT: booleanFromEnv.default(true),
   SAVE_SCREENSHOT_AFTER_SUBMIT: booleanFromEnv.default(true),
   SAVE_HTML_SNAPSHOT: booleanFromEnv.default(false),
+  ENABLE_REAL_99FREELAS_SUBMISSION: booleanFromEnv.default(false),
+  MIN_REAL_SUBMISSION_DETAILS_LENGTH: z.coerce.number().int().positive().default(140),
   NOTIFICATION_PROVIDER: z.enum(["console", "telegram"]).default("console"),
   TELEGRAM_BOT_TOKEN: z.string().default(""),
   TELEGRAM_CHAT_ID: z.string().default(""),

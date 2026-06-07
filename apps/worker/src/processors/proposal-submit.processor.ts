@@ -5,7 +5,7 @@ import type {
 } from "@99freelas/integrations";
 
 import type { WorkerEnv } from "../env.js";
-import { executeProposalSubmitMock } from "../commands/proposal-submit.command.js";
+import { executeProposalSubmitFlow } from "../commands/proposal-submit.command.js";
 
 type ProcessProposalSubmitContext = {
   env: WorkerEnv;
@@ -33,7 +33,7 @@ export async function processProposalSubmitJob(
     return;
   }
 
-  const result = await executeProposalSubmitMock({
+  const result = await executeProposalSubmitFlow({
     env: context.env,
     proposalId: payload.proposalId,
   });
@@ -50,8 +50,10 @@ export async function processProposalSubmitJob(
     metadata: {
       proposalId: payload.proposalId,
       opportunityId: result.opportunityId,
-      result: "SUBMIT_MOCKED_PHASE_8",
+      result: result.liveSubmitted ? "SUBMIT_LIVE_COMPLETED" : "SUBMIT_MOCKED_PHASE_8",
       submissionStatus: result.submissionStatus,
+      liveSubmitted: result.liveSubmitted,
+      guardrails: result.guardrails,
       beforeScreenshotPath: result.beforeScreenshotPath,
       afterScreenshotPath: result.afterScreenshotPath,
       browser: result.browser,

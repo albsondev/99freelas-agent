@@ -7,7 +7,7 @@ import {
   validate99FreelasSession,
 } from "@99freelas/integrations";
 
-import { executeProposalSubmitMock } from "./commands/proposal-submit.command.js";
+import { executeProposalSubmitFlow } from "./commands/proposal-submit.command.js";
 import { loadWorkerEnv } from "./env.js";
 import { registerWorkers } from "./queues/register-workers.js";
 
@@ -177,9 +177,11 @@ async function main() {
   }
 
   if (command === "proposal:submit") {
-    const result = await executeProposalSubmitMock({
+    const result = await executeProposalSubmitFlow({
       env,
       proposalId: readOption("--proposal-id"),
+      executeLiveSubmit: process.argv.includes("--live"),
+      confirmLiveSubmit: process.argv.includes("--confirm-live-submit"),
     });
 
     console.log(
@@ -187,7 +189,11 @@ async function main() {
         {
           service: "worker",
           command,
-          status: result.submissionStatus === "PENDING" ? "mock-ready" : "mock-blocked",
+          status: result.liveSubmitted
+            ? "submitted"
+            : result.submissionStatus === "PENDING"
+              ? "mock-ready"
+              : "mock-blocked",
           result,
         },
         null,

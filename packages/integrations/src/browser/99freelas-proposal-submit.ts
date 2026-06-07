@@ -26,7 +26,7 @@ export type MockSubmit99FreelasProposalInput = {
   afterScreenshotPath?: string;
 };
 
-export type MockSubmit99FreelasProposalResult = {
+export type ProposalSubmissionBrowserResult = {
   currentUrl: string;
   proposalPageUrl: string;
   filledAmount: string;
@@ -39,8 +39,18 @@ export type MockSubmit99FreelasProposalResult = {
   readyForManualSubmit: boolean;
   submitButtonVisible: boolean;
   submitButtonEnabled: boolean;
+  submitAttempted: boolean;
+  submitted: boolean;
+  postSubmitUrl?: string;
+  postSubmitHasProposalForm?: boolean;
   beforeScreenshotPath?: string;
   afterScreenshotPath?: string;
+};
+
+export type MockSubmit99FreelasProposalResult = ProposalSubmissionBrowserResult;
+
+export type Submit99FreelasProposalInput = MockSubmit99FreelasProposalInput & {
+  postSubmitTimeoutMs?: number;
 };
 
 const DEFAULT_TIMEOUT_MS = 45_000;
@@ -48,6 +58,19 @@ const DEFAULT_TIMEOUT_MS = 45_000;
 export async function mockSubmit99FreelasProposal(
   input: MockSubmit99FreelasProposalInput,
 ): Promise<MockSubmit99FreelasProposalResult> {
+  return run99FreelasProposalSubmission(input, false);
+}
+
+export async function submit99FreelasProposal(
+  input: Submit99FreelasProposalInput,
+): Promise<ProposalSubmissionBrowserResult> {
+  return run99FreelasProposalSubmission(input, true);
+}
+
+async function run99FreelasProposalSubmission(
+  input: Submit99FreelasProposalInput,
+  executeSubmit: boolean,
+): Promise<ProposalSubmissionBrowserResult> {
   const browser = await chromium.launch({
     channel: "chrome",
     headless: input.headless ?? false,
@@ -124,6 +147,24 @@ export async function mockSubmit99FreelasProposal(
       submitButtonVisible,
     });
 
+    let currentUrl = page.url();
+    let submitted = false;
+    let postSubmitUrl: string | undefined;
+    let postSubmitHasProposalForm: boolean | undefined;
+
+    if (executeSubmit && blockingReasons.length === 0) {
+      await submitButton.click();
+      await page.waitForTimeout(input.postSubmitTimeoutMs ?? 5_000);
+
+      const postSubmitSnapshot = await page.locator("body").innerText();
+      const postSubmitSignals = parse99FreelasProposalPage(postSubmitSnapshot);
+
+      currentUrl = page.url();
+      postSubmitUrl = currentUrl;
+      postSubmitHasProposalForm = postSubmitSignals.hasProposalForm;
+      submitted = currentUrl !== proposalPageUrl || !postSubmitSignals.hasProposalForm;
+    }
+
     if (afterScreenshotPath) {
       await ensureParentDir(afterScreenshotPath);
       await page.screenshot({
@@ -133,7 +174,7 @@ export async function mockSubmit99FreelasProposal(
     }
 
     return {
-      currentUrl: page.url(),
+      currentUrl,
       proposalPageUrl,
       filledAmount,
       filledFinalAmount,
@@ -145,6 +186,12 @@ export async function mockSubmit99FreelasProposal(
       readyForManualSubmit: blockingReasons.length === 0,
       submitButtonVisible,
       submitButtonEnabled,
+      submitAttempted: executeSubmit && blockingReasons.length === 0,
+      submitted,
+      ...(postSubmitUrl ? { postSubmitUrl } : {}),
+      ...(postSubmitHasProposalForm !== undefined
+        ? { postSubmitHasProposalForm }
+        : {}),
       ...(beforeScreenshotPath ? { beforeScreenshotPath } : {}),
       ...(afterScreenshotPath ? { afterScreenshotPath } : {}),
     };
