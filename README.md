@@ -4,7 +4,7 @@ Monorepo para um agente de apoio operacional no 99Freelas, com foco em captacao 
 
 ## Status atual
 
-As seis primeiras entregas agora cobrem a base do monorepo, a persistencia, a API administrativa, o pipeline inicial de filas, o nucleo de regras e a primeira geracao real de propostas com LLM:
+As sete primeiras entregas agora cobrem a base do monorepo, a persistencia, a API administrativa, o pipeline inicial de filas, o nucleo de regras, a geracao real de propostas com LLM e a autenticacao inicial do navegador:
 
 - workspace `pnpm` com monorepo `apps/*` e `packages/*`
 - configuracao compartilhada de TypeScript
@@ -29,10 +29,14 @@ As seis primeiras entregas agora cobrem a base do monorepo, a persistencia, a AP
 - novo job `proposal.generate` encadeado apos o score
 - persistencia da proposta no Supabase com compliance, estrategia de preco e estrategia de prazo
 - endpoint manual `POST /opportunities/:id/generate-proposal` para regenerar proposta sem reimportar a oportunidade
+- camada Playwright inicial para autenticacao do 99Freelas
+- persistencia de `storageState` em `.auth/99freelas.storage-state.json`
+- comando `pnpm auth:99freelas` com reaproveitamento de sessao salva
+- comando `pnpm session:check` para validar se a sessao ainda esta utilizavel
 
 ## Limites desta fase
 
-O repositorio ainda nao executa integracoes reais com autenticacao Playwright e submissao final no 99Freelas.
+O repositorio ainda nao executa o scraper real da oportunidade nem a submissao final do formulario no 99Freelas.
 
 Tambem deixei a base configurada com `AUTOMATION_MODE="REVIEW_REQUIRED"` por padrao. A ideia aqui e comecar com um pipeline auditavel e seguro antes de habilitar qualquer submissao real. Isso protege sua conta, reputacao e evita automacoes ruins logo no inicio.
 
@@ -87,9 +91,8 @@ pnpm auth:99freelas
 
 ## Proximos passos
 
-O proximo commit deve entrar na Fase 7:
+O proximo commit deve entrar na Fase 8:
 
-- autenticar a sessao Playwright do 99Freelas
 - mapear o formulario real de proposta no navegador
 - preencher o formulario com os dados persistidos da proposta
 - preparar a camada de submissao mockada antes do envio real

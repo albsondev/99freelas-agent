@@ -11,6 +11,7 @@
     "test": "vitest run --passWithNoTests",
     "test:unit": "vitest run --passWithNoTests",
     "auth:99freelas": "tsx src/index.ts auth:99freelas",
+    "session:check": "tsx src/index.ts session:check",
     "proposal:generate": "tsx src/index.ts proposal:generate",
     "proposal:submit": "tsx src/index.ts proposal:submit"
   },

@@ -1,4 +1,23 @@
 export const selectors99Freelas = {
+  loginUrl: "https://www.99freelas.com.br/login",
+  dashboardUrl: "https://www.99freelas.com.br/projetos",
+  homeUrl: "https://www.99freelas.com.br/",
+  authenticatedMarkers: [
+    'a[href*="logout"]',
+    'a[href*="sair"]',
+    'a[href*="/dashboard"]',
+    'a[href*="/projetos"]',
+    'a[href*="/mensagens"]',
+    'a[href*="/perfil"]',
+    '[data-testid="user-menu"]',
+  ],
+  loginMarkers: [
+    'input[type="email"]',
+    'input[name="email"]',
+    'input[name="login"]',
+    'input[type="password"]',
+    'button[type="submit"]',
+  ],
   projectTitle: '[data-testid="project-title"], h1',
   projectDescription: '[data-testid="project-description"], .project-description',
   averageBid: 'text="Média das propostas"',
@@ -8,4 +27,3 @@ export const selectors99Freelas = {
   proposalDetailsTextarea: 'textarea[name="details"]',
   submitButton: 'button[type="submit"]',
 } as const;
-

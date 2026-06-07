@@ -13,6 +13,7 @@
     "@99freelas/config": "workspace:*",
     "@99freelas/core": "workspace:*",
     "openai": "^6.2.0",
+    "playwright": "^1.55.0",
     "@supabase/supabase-js": "^2.49.8",
     "bullmq": "^5.56.1",
     "ioredis": "5.10.1",
