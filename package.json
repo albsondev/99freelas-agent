@@ -16,6 +16,7 @@
     "test:e2e": "turbo run test:e2e",
     "auth:99freelas": "pnpm --filter @99freelas/worker auth:99freelas",
     "session:check": "pnpm --filter @99freelas/worker session:check",
+    "proposal:prefill": "pnpm --filter @99freelas/worker proposal:prefill",
     "import:url": "pnpm --filter @99freelas/api import:url",
     "proposal:generate": "pnpm --filter @99freelas/worker proposal:generate",
     "proposal:submit": "pnpm --filter @99freelas/worker proposal:submit",

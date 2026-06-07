@@ -35,6 +35,8 @@ As sete primeiras entregas agora cobrem a base do monorepo, a persistencia, a AP
 - comando `pnpm session:check` para validar se a sessao ainda esta utilizavel
 - seletores reais do formulario de proposta mapeados a partir de uma aba autenticada no Chrome
 - parser testado da pagina de proposta para media de ofertas, prazo medio e conexoes
+- comando `pnpm proposal:prefill` para abrir a pagina real da proposta e preencher os campos sem clicar no envio final
+- screenshot de auditoria do prefill salvo em `.audit/screenshots`
 
 ## Limites desta fase
 
@@ -91,12 +93,13 @@ pnpm lint
 pnpm typecheck
 pnpm test
 pnpm auth:99freelas
+pnpm proposal:prefill
 ```
 
 ## Proximos passos
 
 O proximo commit deve entrar na Fase 8:
 
-- mapear o formulario real de proposta no navegador
-- preencher o formulario com os dados persistidos da proposta
+- consolidar o preenchimento real do formulario usando proposta persistida
+- validar erros de pagina, bloqueios e estados intermediarios do submit
 - preparar a camada de submissao mockada antes do envio real

@@ -1,5 +1,9 @@
 import {
   authenticate99FreelasSession,
+  createSupabaseAdminClient,
+  OpportunityRepository,
+  prefill99FreelasProposalForm,
+  ProposalRepository,
   validate99FreelasSession,
 } from "@99freelas/integrations";
 
@@ -109,6 +113,68 @@ async function main() {
     return;
   }
 
+  if (command === "proposal:prefill") {
+    const client = createSupabaseAdminClient({
+      supabaseUrl: env.SUPABASE_URL,
+      supabaseKey: env.SUPABASE_SERVICE_ROLE_KEY,
+    });
+    const proposals = new ProposalRepository(client);
+    const opportunities = new OpportunityRepository(client);
+    const proposalId = readOption("--proposal-id");
+    const proposal =
+      proposalId !== null
+        ? await proposals.getById(proposalId)
+        : (await proposals.listRecent(10)).find(
+            (item) => item.submissionStatus !== "SUBMITTED",
+          ) ?? null;
+
+    if (!proposal) {
+      throw new Error(
+        proposalId
+          ? `Proposal ${proposalId} was not found.`
+          : "No pending proposal was found to prefill.",
+      );
+    }
+
+    const opportunity = await opportunities.getById(proposal.opportunityId);
+
+    if (!opportunity) {
+      throw new Error(
+        `Opportunity ${proposal.opportunityId} linked to proposal ${proposal.id} was not found.`,
+      );
+    }
+
+    const prefill = await prefill99FreelasProposalForm({
+      amount: proposal.amount,
+      deadlineDays: proposal.deadlineDays,
+      detailsText: proposal.detailsText,
+      headless: env.BROWSER_HEADLESS,
+      proposalPageUrl: opportunity.url,
+      screenshotPath: `${env.BROWSER_SCREENSHOT_DIR}/proposal-prefill-${proposal.id}.png`,
+      storageStatePath: env.BROWSER_STORAGE_STATE_PATH,
+    });
+
+    await proposals.update(proposal.id, {
+      before_screenshot_path: prefill.screenshotPath ?? null,
+    });
+
+    console.log(
+      JSON.stringify(
+        {
+          service: "worker",
+          command,
+          status: "prefilled",
+          proposalId: proposal.id,
+          opportunityId: opportunity.id,
+          prefill,
+        },
+        null,
+        2,
+      ),
+    );
+    return;
+  }
+
   console.log(
     JSON.stringify(
       {
@@ -121,6 +187,16 @@ async function main() {
       2,
     ),
   );
+}
+
+function readOption(name: string): string | null {
+  const index = process.argv.indexOf(name);
+
+  if (index === -1) {
+    return null;
+  }
+
+  return process.argv[index + 1] ?? null;
 }
 
 main().catch((error) => {

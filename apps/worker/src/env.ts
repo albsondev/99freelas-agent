@@ -26,6 +26,7 @@ export type WorkerEnv = Pick<
   | "BROWSER_HEADLESS"
   | "BROWSER_STORAGE_STATE_PATH"
   | "BROWSER_USER_DATA_DIR"
+  | "BROWSER_SCREENSHOT_DIR"
 >;
 
 export function loadWorkerEnv(source: NodeJS.ProcessEnv = process.env): WorkerEnv {
@@ -56,5 +57,6 @@ export function loadWorkerEnv(source: NodeJS.ProcessEnv = process.env): WorkerEn
     BROWSER_HEADLESS: env.BROWSER_HEADLESS,
     BROWSER_STORAGE_STATE_PATH: env.BROWSER_STORAGE_STATE_PATH,
     BROWSER_USER_DATA_DIR: env.BROWSER_USER_DATA_DIR,
+    BROWSER_SCREENSHOT_DIR: env.BROWSER_SCREENSHOT_DIR,
   };
 }
