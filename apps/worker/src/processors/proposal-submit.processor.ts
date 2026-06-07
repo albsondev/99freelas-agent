@@ -4,7 +4,11 @@ import type {
   ProposalRepository,
 } from "@99freelas/integrations";
 
+import type { WorkerEnv } from "../env.js";
+import { executeProposalSubmitMock } from "../commands/proposal-submit.command.js";
+
 type ProcessProposalSubmitContext = {
+  env: WorkerEnv;
   proposals: ProposalRepository;
   runs: AutomationRunRepository;
 };
@@ -29,17 +33,28 @@ export async function processProposalSubmitJob(
     return;
   }
 
-  await context.proposals.update(payload.proposalId, {
-    submission_status: "PENDING",
+  const result = await executeProposalSubmitMock({
+    env: context.env,
+    proposalId: payload.proposalId,
   });
 
   await context.runs.update(payload.runId, {
-    status: "COMPLETED",
+    status: result.submissionStatus === "FAILED_REQUIRES_MANUAL_ACTION" ? "FAILED" : "COMPLETED",
     finished_at: new Date().toISOString(),
+    proposal_id: payload.proposalId,
+    error_code:
+      result.submissionStatus === "FAILED_REQUIRES_MANUAL_ACTION"
+        ? "SUBMIT_BLOCKED_IN_MOCK_MODE"
+        : null,
+    error_message: result.submissionError,
     metadata: {
       proposalId: payload.proposalId,
-      result: "SUBMIT_PLACEHOLDER_PHASE_3",
+      opportunityId: result.opportunityId,
+      result: "SUBMIT_MOCKED_PHASE_8",
+      submissionStatus: result.submissionStatus,
+      beforeScreenshotPath: result.beforeScreenshotPath,
+      afterScreenshotPath: result.afterScreenshotPath,
+      browser: result.browser,
     },
   });
 }
-

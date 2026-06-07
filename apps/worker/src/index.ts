@@ -7,6 +7,7 @@ import {
   validate99FreelasSession,
 } from "@99freelas/integrations";
 
+import { executeProposalSubmitMock } from "./commands/proposal-submit.command.js";
 import { loadWorkerEnv } from "./env.js";
 import { registerWorkers } from "./queues/register-workers.js";
 
@@ -167,6 +168,27 @@ async function main() {
           proposalId: proposal.id,
           opportunityId: opportunity.id,
           prefill,
+        },
+        null,
+        2,
+      ),
+    );
+    return;
+  }
+
+  if (command === "proposal:submit") {
+    const result = await executeProposalSubmitMock({
+      env,
+      proposalId: readOption("--proposal-id"),
+    });
+
+    console.log(
+      JSON.stringify(
+        {
+          service: "worker",
+          command,
+          status: result.submissionStatus === "PENDING" ? "mock-ready" : "mock-blocked",
+          result,
         },
         null,
         2,

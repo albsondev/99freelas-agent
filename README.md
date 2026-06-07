@@ -37,10 +37,14 @@ As sete primeiras entregas agora cobrem a base do monorepo, a persistencia, a AP
 - parser testado da pagina de proposta para media de ofertas, prazo medio e conexoes
 - comando `pnpm proposal:prefill` para abrir a pagina real da proposta e preencher os campos sem clicar no envio final
 - screenshot de auditoria do prefill salvo em `.audit/screenshots`
+- comando `pnpm proposal:submit` em modo mockado para validar o estado final da pagina sem clicar no envio real
+- captura de screenshots antes e depois do preenchimento final para auditoria local
 
 ## Limites desta fase
 
 O repositorio ainda nao executa o scraper real da oportunidade nem a submissao final do formulario no 99Freelas.
+
+Nesta fase, o submit roda em modo seguro: ele preenche, revalida, coleta warnings, confere se o botao final esta habilitado e registra screenshots, mas nao clica em `Enviar proposta`.
 
 Na pratica, a autenticacao automatizada pode ser bloqueada pelo Cloudflare. Quando isso acontecer, a trilha recomendada e reaproveitar uma sessao manual ja autenticada no Chrome e iniciar a automacao a partir de uma aba real do projeto/proposta.
 
@@ -94,12 +98,13 @@ pnpm typecheck
 pnpm test
 pnpm auth:99freelas
 pnpm proposal:prefill
+pnpm proposal:submit
 ```
 
 ## Proximos passos
 
-O proximo commit deve entrar na Fase 8:
+Com a Fase 8 em andamento, os proximos passos ficam assim:
 
 - consolidar o preenchimento real do formulario usando proposta persistida
 - validar erros de pagina, bloqueios e estados intermediarios do submit
-- preparar a camada de submissao mockada antes do envio real
+- preparar os guardrails finais antes do envio real

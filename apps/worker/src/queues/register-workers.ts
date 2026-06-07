@@ -110,6 +110,7 @@ export async function registerWorkers(env: WorkerEnv): Promise<WorkerHandle> {
       QueueNames.PROPOSAL_SUBMIT,
       async (job) => {
         await processProposalSubmitJob(job.data, {
+          env,
           proposals,
           runs,
         });
