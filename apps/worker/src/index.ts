@@ -70,6 +70,7 @@ async function main() {
     const session = await authenticate99FreelasSession({
       headless: env.BROWSER_HEADLESS,
       storageStatePath: env.BROWSER_STORAGE_STATE_PATH,
+      userDataDir: env.BROWSER_USER_DATA_DIR,
     });
 
     console.log(

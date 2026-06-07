@@ -33,10 +33,14 @@ As sete primeiras entregas agora cobrem a base do monorepo, a persistencia, a AP
 - persistencia de `storageState` em `.auth/99freelas.storage-state.json`
 - comando `pnpm auth:99freelas` com reaproveitamento de sessao salva
 - comando `pnpm session:check` para validar se a sessao ainda esta utilizavel
+- seletores reais do formulario de proposta mapeados a partir de uma aba autenticada no Chrome
+- parser testado da pagina de proposta para media de ofertas, prazo medio e conexoes
 
 ## Limites desta fase
 
 O repositorio ainda nao executa o scraper real da oportunidade nem a submissao final do formulario no 99Freelas.
+
+Na pratica, a autenticacao automatizada pode ser bloqueada pelo Cloudflare. Quando isso acontecer, a trilha recomendada e reaproveitar uma sessao manual ja autenticada no Chrome e iniciar a automacao a partir de uma aba real do projeto/proposta.
 
 Tambem deixei a base configurada com `AUTOMATION_MODE="REVIEW_REQUIRED"` por padrao. A ideia aqui e comecar com um pipeline auditavel e seguro antes de habilitar qualquer submissao real. Isso protege sua conta, reputacao e evita automacoes ruins logo no inicio.
 

@@ -25,6 +25,7 @@ export type WorkerEnv = Pick<
   | "REJECT_UNCLEAR_SCOPE_WHEN_AUTOPILOT"
   | "BROWSER_HEADLESS"
   | "BROWSER_STORAGE_STATE_PATH"
+  | "BROWSER_USER_DATA_DIR"
 >;
 
 export function loadWorkerEnv(source: NodeJS.ProcessEnv = process.env): WorkerEnv {
@@ -54,5 +55,6 @@ export function loadWorkerEnv(source: NodeJS.ProcessEnv = process.env): WorkerEn
     REJECT_UNCLEAR_SCOPE_WHEN_AUTOPILOT: env.REJECT_UNCLEAR_SCOPE_WHEN_AUTOPILOT,
     BROWSER_HEADLESS: env.BROWSER_HEADLESS,
     BROWSER_STORAGE_STATE_PATH: env.BROWSER_STORAGE_STATE_PATH,
+    BROWSER_USER_DATA_DIR: env.BROWSER_USER_DATA_DIR,
   };
 }
