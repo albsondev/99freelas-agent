@@ -38,6 +38,7 @@ As sete primeiras entregas agora cobrem a base do monorepo, a persistencia, a AP
 - comando `pnpm proposal:prefill` para abrir a pagina real da proposta e preencher os campos sem clicar no envio final
 - screenshot de auditoria do prefill salvo em `.audit/screenshots`
 - comando `pnpm proposal:submit` em modo mockado para validar o estado final da pagina sem clicar no envio real
+- comando `pnpm proposal:observe` para a IA escolher a melhor proposta elegivel, abrir o browser visivel e executar o fluxo passo a passo
 - captura de screenshots antes e depois do preenchimento final para auditoria local
 - guardrails centrais para envio real: score minimo, compliance aprovado, limites por hora/dia, modo `AUTOPILOT`, flag de ambiente e confirmacao explicita de CLI
 
@@ -46,6 +47,8 @@ As sete primeiras entregas agora cobrem a base do monorepo, a persistencia, a AP
 O repositorio ainda nao executa o scraper real da oportunidade nem a submissao final do formulario no 99Freelas.
 
 Nesta fase, o submit roda em modo seguro: ele preenche, revalida, coleta warnings, confere se o botao final esta habilitado e registra screenshots, mas nao clica em `Enviar proposta`.
+
+O `Live Observer Mode - Observacao` usa esse mesmo fluxo, mas com navegador visivel, delays entre etapas, selecao automatica da melhor proposta candidata e pausa antes do envio.
 
 O clique real ficou preparado, mas so pode acontecer quando todas estas condicoes passam juntas:
 - `AUTOMATION_MODE="AUTOPILOT"`
@@ -107,6 +110,7 @@ pnpm typecheck
 pnpm test
 pnpm auth:99freelas
 pnpm proposal:prefill
+pnpm proposal:observe
 pnpm proposal:submit
 ```
 
@@ -117,3 +121,17 @@ Com a Fase 8 praticamente fechada, os proximos passos ficam assim:
 - validar um envio live controlado com proposta de baixo risco e conta monitorada
 - registrar o resultado final no bucket/auditoria do Supabase
 - decidir quando habilitar o job automatico de submit fora do modo manual
+
+## Observacao ao vivo
+
+Para ver a IA trabalhando no browser sem enviar a proposta:
+
+```bash
+pnpm proposal:observe
+```
+
+Flags uteis:
+
+- `--proposal-id <id>` para observar uma proposta especifica
+- `--step-delay-ms 2000` para desacelerar cada etapa observada
+- `--hold-ms 60000` para manter a pagina aberta por mais tempo antes de fechar

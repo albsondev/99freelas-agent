@@ -7,7 +7,10 @@ import {
   validate99FreelasSession,
 } from "@99freelas/integrations";
 
-import { executeProposalSubmitFlow } from "./commands/proposal-submit.command.js";
+import {
+  executeProposalObserveFlow,
+  executeProposalSubmitFlow,
+} from "./commands/proposal-submit.command.js";
 import { loadWorkerEnv } from "./env.js";
 import { registerWorkers } from "./queues/register-workers.js";
 
@@ -203,6 +206,29 @@ async function main() {
     return;
   }
 
+  if (command === "proposal:observe") {
+    const result = await executeProposalObserveFlow({
+      env,
+      proposalId: readOption("--proposal-id"),
+      stepDelayMs: readNumberOption("--step-delay-ms"),
+      holdOpenMs: readNumberOption("--hold-ms"),
+    });
+
+    console.log(
+      JSON.stringify(
+        {
+          service: "worker",
+          command,
+          status: result.submissionStatus === "PENDING" ? "observation-complete" : "observation-blocked",
+          result,
+        },
+        null,
+        2,
+      ),
+    );
+    return;
+  }
+
   console.log(
     JSON.stringify(
       {
@@ -225,6 +251,18 @@ function readOption(name: string): string | null {
   }
 
   return process.argv[index + 1] ?? null;
+}
+
+function readNumberOption(name: string): number | undefined {
+  const value = readOption(name);
+
+  if (value === null) {
+    return undefined;
+  }
+
+  const parsed = Number(value);
+
+  return Number.isFinite(parsed) ? parsed : undefined;
 }
 
 main().catch((error) => {

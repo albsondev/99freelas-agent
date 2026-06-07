@@ -24,6 +24,34 @@ export type MockSubmit99FreelasProposalInput = {
   timeoutMs?: number;
   beforeScreenshotPath?: string;
   afterScreenshotPath?: string;
+  observer?: ProposalObserverOptions;
+};
+
+export type ProposalObserverStepName =
+  | "browser-opened"
+  | "proposal-page-opened"
+  | "proposal-form-detected"
+  | "before-screenshot-captured"
+  | "amount-filled"
+  | "deadline-filled"
+  | "details-filled"
+  | "readiness-evaluated"
+  | "paused-before-submit"
+  | "submit-clicked"
+  | "after-screenshot-captured"
+  | "observer-finished";
+
+export type ProposalObserverStep = {
+  step: ProposalObserverStepName;
+  message: string;
+  currentUrl?: string;
+};
+
+export type ProposalObserverOptions = {
+  enabled?: boolean;
+  stepDelayMs?: number;
+  holdOpenMs?: number;
+  onStep?: (event: ProposalObserverStep) => Promise<void> | void;
 };
 
 export type ProposalSubmissionBrowserResult = {
@@ -83,17 +111,37 @@ async function run99FreelasProposalSubmission(
     const page = await context.newPage();
     const timeoutMs = input.timeoutMs ?? DEFAULT_TIMEOUT_MS;
     const proposalPageUrl = build99FreelasProposalPageUrl(input.proposalPageUrl);
+    const stepDelayMs = input.observer?.stepDelayMs ?? 1_500;
+
+    await emitObserverStep(input.observer, {
+      step: "browser-opened",
+      message: "Navegador do 99Freelas aberto em modo observacao.",
+    });
 
     await page.goto(proposalPageUrl, {
       waitUntil: "domcontentloaded",
       timeout: timeoutMs,
     });
 
+    await emitObserverStep(input.observer, {
+      step: "proposal-page-opened",
+      message: "Pagina da proposta aberta.",
+      currentUrl: page.url(),
+    });
+    await waitForObserver(input.observer, stepDelayMs);
+
     const formLocator = page.locator(selectors99Freelas.proposalForm).first();
     await formLocator.waitFor({
       state: "visible",
       timeout: timeoutMs,
     });
+
+    await emitObserverStep(input.observer, {
+      step: "proposal-form-detected",
+      message: "Formulario de proposta localizado na pagina.",
+      currentUrl: page.url(),
+    });
+    await waitForObserver(input.observer, stepDelayMs);
 
     const beforeScreenshotPath = input.beforeScreenshotPath
       ? resolve(input.beforeScreenshotPath)
@@ -108,17 +156,40 @@ async function run99FreelasProposalSubmission(
         path: beforeScreenshotPath,
         fullPage: true,
       });
+      await emitObserverStep(input.observer, {
+        step: "before-screenshot-captured",
+        message: "Screenshot inicial capturada antes do preenchimento.",
+        currentUrl: page.url(),
+      });
     }
 
     await page.locator(selectors99Freelas.proposalAmountInput).fill(
       format99FreelasMoneyInput(input.amount),
     );
+    await emitObserverStep(input.observer, {
+      step: "amount-filled",
+      message: "Campo de oferta preenchido.",
+      currentUrl: page.url(),
+    });
+    await waitForObserver(input.observer, stepDelayMs);
     await page.locator(selectors99Freelas.proposalDeadlineInput).fill(
       format99FreelasDeadlineInput(input.deadlineDays),
     );
+    await emitObserverStep(input.observer, {
+      step: "deadline-filled",
+      message: "Campo de duracao estimada preenchido.",
+      currentUrl: page.url(),
+    });
+    await waitForObserver(input.observer, stepDelayMs);
     await page.locator(selectors99Freelas.proposalDetailsTextarea).fill(
       input.detailsText,
     );
+    await emitObserverStep(input.observer, {
+      step: "details-filled",
+      message: "Campo de detalhes preenchido com a proposta gerada.",
+      currentUrl: page.url(),
+    });
+    await waitForObserver(input.observer, stepDelayMs);
 
     const submitButton = page.locator(selectors99Freelas.submitButton);
     const submitButtonVisible = await submitButton.isVisible();
@@ -147,15 +218,45 @@ async function run99FreelasProposalSubmission(
       submitButtonVisible,
     });
 
+    await emitObserverStep(input.observer, {
+      step: "readiness-evaluated",
+      message:
+        blockingReasons.length === 0
+          ? "Guardrails da pagina passaram; pronto para observar o submit."
+          : `Guardrails encontraram bloqueios: ${blockingReasons.join(" ")}`,
+      currentUrl: page.url(),
+    });
+    await waitForObserver(input.observer, stepDelayMs);
+
     let currentUrl = page.url();
     let submitted = false;
     let postSubmitUrl: string | undefined;
     let postSubmitHasProposalForm: boolean | undefined;
 
     if (executeSubmit && blockingReasons.length === 0) {
+      await emitObserverStep(input.observer, {
+        step: "paused-before-submit",
+        message: "Pausa curta antes do clique final de envio.",
+        currentUrl: page.url(),
+      });
+      await waitForObserver(input.observer, stepDelayMs);
       await submitButton.click();
+      await emitObserverStep(input.observer, {
+        step: "submit-clicked",
+        message: "Botao final de envio clicado.",
+        currentUrl: page.url(),
+      });
       await page.waitForTimeout(input.postSubmitTimeoutMs ?? 5_000);
+    } else if (!executeSubmit && input.observer?.enabled) {
+      await emitObserverStep(input.observer, {
+        step: "paused-before-submit",
+        message: "Observacao concluida; a pagina vai permanecer aberta antes de fechar sem enviar.",
+        currentUrl: page.url(),
+      });
+      await waitForObserver(input.observer, input.observer.holdOpenMs ?? 45_000);
+    }
 
+    if (executeSubmit && blockingReasons.length === 0) {
       const postSubmitSnapshot = await page.locator("body").innerText();
       const postSubmitSignals = parse99FreelasProposalPage(postSubmitSnapshot);
 
@@ -171,7 +272,20 @@ async function run99FreelasProposalSubmission(
         path: afterScreenshotPath,
         fullPage: true,
       });
+      await emitObserverStep(input.observer, {
+        step: "after-screenshot-captured",
+        message: "Screenshot final capturada apos o fluxo observado.",
+        currentUrl,
+      });
     }
+
+    await emitObserverStep(input.observer, {
+      step: "observer-finished",
+      message: submitted
+        ? "Fluxo observado foi encerrado apos tentativa de envio."
+        : "Fluxo observado foi encerrado sem enviar proposta.",
+      currentUrl,
+    });
 
     return {
       currentUrl,
@@ -250,4 +364,26 @@ export function extract99FreelasProposalWarnings(snapshot: string): string[] {
 
 async function ensureParentDir(targetPath: string): Promise<void> {
   await mkdir(dirname(targetPath), { recursive: true });
+}
+
+async function emitObserverStep(
+  observer: ProposalObserverOptions | undefined,
+  event: ProposalObserverStep,
+): Promise<void> {
+  if (!observer?.enabled || !observer.onStep) {
+    return;
+  }
+
+  await observer.onStep(event);
+}
+
+async function waitForObserver(
+  observer: ProposalObserverOptions | undefined,
+  durationMs: number,
+): Promise<void> {
+  if (!observer?.enabled || durationMs <= 0) {
+    return;
+  }
+
+  await new Promise((resolve) => setTimeout(resolve, durationMs));
 }

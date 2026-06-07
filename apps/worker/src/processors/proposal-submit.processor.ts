@@ -36,6 +36,8 @@ export async function processProposalSubmitJob(
   const result = await executeProposalSubmitFlow({
     env: context.env,
     proposalId: payload.proposalId,
+    executeLiveSubmit: false,
+    confirmLiveSubmit: false,
   });
 
   await context.runs.update(payload.runId, {
