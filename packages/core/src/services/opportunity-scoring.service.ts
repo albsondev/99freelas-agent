@@ -39,6 +39,7 @@ const POSITIVE_SKILLS: Array<{ skill: string; weight: number }> = [
   { skill: "JavaScript", weight: 7 },
   { skill: "TypeScript", weight: 8 },
   { skill: "React", weight: 8 },
+  { skill: "Vue.js", weight: 7 },
   { skill: "Next.js", weight: 8 },
   { skill: "Node.js", weight: 8 },
   { skill: "PHP", weight: 6 },
@@ -52,6 +53,7 @@ const POSITIVE_SKILLS: Array<{ skill: string; weight: number }> = [
   { skill: "Automação", weight: 5 },
   { skill: "IA aplicada a web", weight: 5 },
   { skill: "Correção de bugs", weight: 4 },
+  { skill: "Landing Pages", weight: 4 },
 ];
 
 const NEGATIVE_RULES: Array<{
@@ -69,6 +71,20 @@ const NEGATIVE_RULES: Array<{
     missingSkill: "Design",
   },
   {
+    patterns: [/\baws\b/i, /\bazure\b/i, /\bamazon web services\b/i, /\bcloudformation\b/i],
+    penalty: 32,
+    riskFlag: "CLOUD_INFRA_SCOPE",
+    reason: "Escopo com foco em cloud/infra fora do perfil principal.",
+    missingSkill: "AWS/Azure",
+  },
+  {
+    patterns: [/\bjava\b/i, /\bspring boot\b/i, /\bspring\b/i, /\bjsp\b/i],
+    penalty: 34,
+    riskFlag: "JAVA_SCOPE",
+    reason: "Projeto com stack Java fora do escopo desejado.",
+    missingSkill: "Java",
+  },
+  {
     patterns: [/\bsocial media\b/i, /\btr[áa]fego pago\b/i],
     penalty: 30,
     riskFlag: "MARKETING_SCOPE",
@@ -81,6 +97,13 @@ const NEGATIVE_RULES: Array<{
     riskFlag: "NATIVE_APP_SCOPE",
     reason: "Projeto com foco em app nativo ou mobile dedicado.",
     missingSkill: "Mobile nativo",
+  },
+  {
+    patterns: [/\be-?commerce completo\b/i, /\bloja virtual completa\b/i, /\bmarketplace\b/i, /\bshopify\b/i, /\bmagento\b/i],
+    penalty: 34,
+    riskFlag: "FULL_ECOMMERCE_SCOPE",
+    reason: "Projeto com sinais de e-commerce completo fora do escopo desejado.",
+    missingSkill: "E-commerce completo",
   },
   {
     patterns: [/\bwhatsapp\b/i, /\btelegram\b/i, /\be-mail\b/i, /\bemail\b/i],
@@ -176,7 +199,21 @@ export class OpportunityScoringService {
       reasons.push("Concorrência elevada reduz a atratividade marginal.");
     }
 
+    const isSimpleMobileFix =
+      /\breact native\b/i.test(source) &&
+      /\b(?:bug|ajuste|corre(?:ç|c)(?:a|ã)o|erro|simples|rapido|rápido)\b/i.test(source);
+
+    if (isSimpleMobileFix) {
+      score += 20;
+      riskFlags.push("REACT_NATIVE_REVIEW_ONLY");
+      reasons.push("React Native aparece em contexto simples/pontual, mantendo revisão possível.");
+    }
+
     for (const rule of NEGATIVE_RULES) {
+      if (rule.riskFlag === "NATIVE_APP_SCOPE" && isSimpleMobileFix) {
+        continue;
+      }
+
       if (rule.patterns.some((pattern) => pattern.test(source))) {
         score -= rule.penalty;
         riskFlags.push(rule.riskFlag);
@@ -193,9 +230,15 @@ export class OpportunityScoringService {
     const decisionHint =
       score >= this.config.autopilotMinScore &&
       !riskFlags.some((flag) =>
-        ["EXTERNAL_CONTACT_REQUEST", "OFF_PLATFORM_PAYMENT_REQUEST", "UNCLEAR_SCOPE"].includes(
-          flag,
-        ),
+        [
+          "EXTERNAL_CONTACT_REQUEST",
+          "OFF_PLATFORM_PAYMENT_REQUEST",
+          "UNCLEAR_SCOPE",
+          "CLOUD_INFRA_SCOPE",
+          "JAVA_SCOPE",
+          "FULL_ECOMMERCE_SCOPE",
+          "REACT_NATIVE_REVIEW_ONLY",
+        ].includes(flag),
       )
         ? "AUTO_SUBMIT"
         : score >= this.config.reviewMinScore
@@ -212,4 +255,3 @@ export class OpportunityScoringService {
     };
   }
 }
-

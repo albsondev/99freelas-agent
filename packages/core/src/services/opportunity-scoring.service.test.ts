@@ -41,5 +41,41 @@ describe("OpportunityScoringService", () => {
     expect(result.riskFlags).toContain("NATIVE_APP_SCOPE");
     expect(result.riskFlags).toContain("EXTERNAL_CONTACT_REQUEST");
   });
-});
 
+  it("rejects projects centered on cloud, Java or full ecommerce", () => {
+    const service = new OpportunityScoringService();
+    const result = service.score({
+      title: "Sistema Java com AWS para ecommerce completo",
+      description:
+        "Preciso de backend em Java Spring Boot, deploy na AWS e estrutura completa de ecommerce com checkout e catalogo.",
+      category: "Desenvolvimento Web",
+      skills: ["Java", "AWS"],
+      averageBidAmount: 2500,
+      budgetMax: 4000,
+      proposalCount: 8,
+    });
+
+    expect(result.decisionHint).toBe("REJECTED");
+    expect(result.riskFlags).toContain("CLOUD_INFRA_SCOPE");
+    expect(result.riskFlags).toContain("JAVA_SCOPE");
+    expect(result.riskFlags).toContain("FULL_ECOMMERCE_SCOPE");
+  });
+
+  it("keeps simple React Native bugfixes in review instead of hard rejection", () => {
+    const service = new OpportunityScoringService();
+    const result = service.score({
+      title: "Ajuste rapido em React Native",
+      description:
+        "Preciso corrigir um bug simples em uma tela React Native, revisar um erro pontual de formulario e ajustar o consumo de API em um fluxo pequeno ja existente. O escopo esta bem delimitado e a demanda e somente de manutencao rapida.",
+      category: "Mobile",
+      skills: ["React", "TypeScript", "API REST"],
+      averageBidAmount: 600,
+      budgetMax: 800,
+      proposalCount: 4,
+      clientRating: 4.9,
+    });
+
+    expect(result.decisionHint).toBe("REVIEW_REQUIRED");
+    expect(result.riskFlags).not.toContain("NATIVE_APP_SCOPE");
+  });
+});

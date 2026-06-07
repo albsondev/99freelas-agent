@@ -44,6 +44,12 @@ describe("normalization utils", () => {
     );
   });
 
+  it("recognizes Vue.js and landing page related terms", () => {
+    expect(
+      extractSkills("Preciso de uma landing page em Vue.js para campanha educacional."),
+    ).toEqual(expect.arrayContaining(["Vue.js", "Landing Pages"]));
+  });
+
   it("sanitizes proposal text without killing paragraphs", () => {
     expect(
       sanitizeProposalText(" Olá, cliente.   \n\n Posso ajudar com  React e Node.  "),

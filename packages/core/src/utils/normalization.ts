@@ -4,6 +4,7 @@ const SKILL_PATTERNS: Array<{ canonical: string; patterns: RegExp[] }> = [
   { canonical: "JavaScript", patterns: [/\bjavascript\b/i, /\bjs\b/i] },
   { canonical: "TypeScript", patterns: [/\btypescript\b/i, /\bts\b/i] },
   { canonical: "React", patterns: [/\breact(?:\.js)?\b/i] },
+  { canonical: "Vue.js", patterns: [/\bvue(?:\.js)?\b/i, /\bvuejs\b/i] },
   { canonical: "Next.js", patterns: [/\bnext(?:\.js)?\b/i] },
   { canonical: "Node.js", patterns: [/\bnode(?:\.js)?\b/i] },
   { canonical: "PHP", patterns: [/\bphp\b/i] },
@@ -21,6 +22,7 @@ const SKILL_PATTERNS: Array<{ canonical: string; patterns: RegExp[] }> = [
   { canonical: "Automação", patterns: [/\bautoma(?:ç|c)(?:a|ã)o\b/i] },
   { canonical: "IA aplicada a web", patterns: [/\bia\b/i, /\bintelig[êe]ncia artificial\b/i] },
   { canonical: "Correção de bugs", patterns: [/\bbug(?:s)?\b/i, /\bcorre(?:ç|c)(?:a|ã)o\b/i] },
+  { canonical: "Landing Pages", patterns: [/\blanding page\b/i, /\blp\b/i] },
 ];
 
 const EMAIL_PATTERN = /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/i;

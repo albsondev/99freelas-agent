@@ -21,6 +21,8 @@ type SerializedFreelancerProfile = {
   seniority: string;
   mainSkills: string[];
   secondarySkills: string[];
+  preferredProjectTypes: string[];
+  blockedProjectTypes: string[];
   proposalTone: string;
   portfolioSummary: string;
 };
@@ -28,13 +30,32 @@ type SerializedFreelancerProfile = {
 const DEFAULT_PROFILE: SerializedFreelancerProfile = {
   displayName: "Especialista Web Full Stack",
   headline:
-    "Desenvolvedor focado em JavaScript, TypeScript, PHP, APIs e integracoes web",
+    "Desenvolvedor web focado em JavaScript, TypeScript, PHP, React, Vue, Next.js e Node.js",
   seniority: "senior",
-  mainSkills: ["JavaScript", "TypeScript", "Node.js", "PHP", "APIs", "Supabase"],
-  secondarySkills: ["Laravel", "Next.js", "Automacao", "Dashboards"],
+  mainSkills: ["JavaScript", "TypeScript", "React", "Vue.js", "Next.js", "Node.js", "PHP"],
+  secondarySkills: ["WordPress", "APIs", "Supabase", "Landing Pages", "Correcao de bugs"],
+  preferredProjectTypes: [
+    "Sites pessoais",
+    "Sites educacionais",
+    "Sites para advogados",
+    "Landing Pages",
+    "Projetos PHP",
+    "Projetos React.js",
+    "Projetos Vue.js",
+    "Projetos Next.js",
+    "Projetos Node.js",
+    "Correcao de erros e bugs",
+    "Projetos WordPress com manutencao ou ajustes",
+  ],
+  blockedProjectTypes: [
+    "AWS e Azure",
+    "Projetos em Java",
+    "Ecommerce completo",
+    "React Native complexo",
+  ],
   proposalTone: "consultivo_direto",
   portfolioSummary:
-    "Experiencia com sistemas web sob medida, integracoes, manutencao evolutiva e entrega incremental.",
+    "Experiencia com sistemas web sob medida, manutencao evolutiva, correcao de bugs, integracoes e entregas enxutas para projetos web.",
 };
 
 function resolveFreelancerProfile(
@@ -54,6 +75,14 @@ function resolveFreelancerProfile(
       profile.secondarySkills.length > 0
         ? profile.secondarySkills
         : DEFAULT_PROFILE.secondarySkills,
+    preferredProjectTypes:
+      profile.preferredProjectTypes.length > 0
+        ? profile.preferredProjectTypes
+        : DEFAULT_PROFILE.preferredProjectTypes,
+    blockedProjectTypes:
+      profile.blockedProjectTypes.length > 0
+        ? profile.blockedProjectTypes
+        : DEFAULT_PROFILE.blockedProjectTypes,
     proposalTone: profile.proposalTone,
     portfolioSummary:
       profile.portfolioSummary ?? DEFAULT_PROFILE.portfolioSummary,
@@ -74,6 +103,7 @@ export function buildProposalSystemPrompt(): string {
     "- technicalSummary deve resumir a abordagem tecnica em uma frase objetiva.",
     "- assumptions, questions e risks devem ser concretos e curtos.",
     "- qualityScore deve refletir a qualidade comercial do rascunho entre 0 e 100.",
+    "- Se o projeto parecer fora do perfil informado do freelancer, a proposta deve soar cautelosa e nunca inventar experiencia que ele nao quer vender.",
   ].join("\n");
 }
 
