@@ -174,9 +174,9 @@ export async function processProposalGenerateJob(
 
   const compliance = new ComplianceValidatorService().validate({
     detailsText: sanitizeProposalText(generated.detailsText),
-    title: opportunity.title,
-    description: opportunity.description,
     skills: opportunity.skills,
+    ...(withOptional("title", opportunity.title)),
+    ...(withOptional("description", opportunity.description)),
   });
 
   const score: ScoreResult = {
@@ -184,9 +184,7 @@ export async function processProposalGenerateJob(
     decisionHint:
       opportunity.decision === "AUTO_SUBMIT"
         ? "AUTO_SUBMIT"
-        : opportunity.decision === "REJECTED"
-          ? "REJECTED"
-          : "REVIEW_REQUIRED",
+        : "REVIEW_REQUIRED",
     reasons: opportunity.decisionReasons,
     matchedSkills: opportunity.matchedSkills,
     missingSkills: opportunity.missingSkills,
@@ -325,4 +323,17 @@ function readIntegerSetting(
 
 function mergeStrings(...groups: string[][]): string[] {
   return [...new Set(groups.flat().filter(Boolean))];
+}
+
+function withOptional<TKey extends string, TValue>(
+  key: TKey,
+  value: TValue | undefined,
+): Partial<Record<TKey, TValue>> {
+  if (value === undefined) {
+    return {};
+  }
+
+  return {
+    [key]: value,
+  } as Partial<Record<TKey, TValue>>;
 }

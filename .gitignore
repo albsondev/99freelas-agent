@@ -10,4 +10,4 @@ coverage
 .auth
 .audit
 supabase/.temp
-
+*.tsbuildinfo

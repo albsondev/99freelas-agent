@@ -110,13 +110,15 @@ class OpenAiProposalGenerator implements ProposalLlmProvider {
       llmModel: this.config.model,
       llmPromptVersion: PROPOSAL_PROMPT_VERSION,
       responseId: response.id,
-      usage: response.usage
+      ...(response.usage
         ? {
-            inputTokens: response.usage.input_tokens,
-            outputTokens: response.usage.output_tokens,
-            totalTokens: response.usage.total_tokens,
+            usage: {
+              inputTokens: response.usage.input_tokens,
+              outputTokens: response.usage.output_tokens,
+              totalTokens: response.usage.total_tokens,
+            },
           }
-        : undefined,
+        : {}),
     };
   }
 }

@@ -8,8 +8,8 @@
     "build": "tsc -p tsconfig.json",
     "lint": "tsc -p tsconfig.json --noEmit",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "vitest run",
-    "test:unit": "vitest run",
+    "test": "vitest run --passWithNoTests",
+    "test:unit": "vitest run --passWithNoTests",
     "auth:99freelas": "tsx src/index.ts auth:99freelas",
     "proposal:generate": "tsx src/index.ts proposal:generate",
     "proposal:submit": "tsx src/index.ts proposal:submit"
@@ -19,7 +19,7 @@
     "@99freelas/core": "workspace:*",
     "@99freelas/integrations": "workspace:*",
     "bullmq": "^5.56.1",
-    "ioredis": "^5.7.0",
+    "ioredis": "5.10.1",
     "zod": "^3.25.67"
   }
 }

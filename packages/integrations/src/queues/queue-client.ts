@@ -1,4 +1,4 @@
-import { Queue, type JobsOptions } from "bullmq";
+import { Queue, type ConnectionOptions, type JobsOptions } from "bullmq";
 import IORedis from "ioredis";
 
 import type { QueueName, QueuePayload } from "@99freelas/core";
@@ -54,7 +54,7 @@ export class QueueProducer {
     }
 
     const queue = new Queue(queueName, {
-      connection: this.connection,
+      connection: this.connection as unknown as ConnectionOptions,
       defaultJobOptions: DEFAULT_JOB_OPTIONS,
     });
 
@@ -62,4 +62,3 @@ export class QueueProducer {
     return queue;
   }
 }
-

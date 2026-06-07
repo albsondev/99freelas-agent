@@ -25,7 +25,7 @@ const PHONE_PATTERN =
 const WHATSAPP_PATTERN = /\bwhatsapp\b/i;
 const TELEGRAM_PATTERN = /\btelegram\b/i;
 const ABSOLUTE_GUARANTEE_PATTERN =
-  /\b(?:100%\s*garantido|garantia total|sem erro nenhum|resultado garantido)\b/i;
+  /\b(?:100%\s*garantido|garantia total|sem erro nenhum|resultado garantido|garanto\s*100%|100%\s*de\s*sucesso)\b/i;
 const GENERIC_PATTERN =
   /\b(?:tenho interesse no projeto|ol[aá], tudo bem|posso ajudar em qualquer demanda)\b/i;
 const AGGRESSIVE_PATTERN =
@@ -144,4 +144,3 @@ export class ComplianceValidatorService {
     };
   }
 }
-

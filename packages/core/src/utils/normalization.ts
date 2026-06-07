@@ -103,7 +103,7 @@ export function extractBudgetRangeBRL(text: string): BudgetRange {
   }
 
   const values = [...source.matchAll(/(\d[\d.,\s]*(?:mil|k)?)/gi)]
-    .map((match) => normalizeNumberishToken(match[1]))
+    .map((match) => normalizeNumberishToken(match[1] ?? ""))
     .filter((value): value is number => value !== null);
 
   if (values.length === 0) {

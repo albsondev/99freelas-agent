@@ -10,15 +10,26 @@ type SupabaseClientOptions = {
   supabaseKey: string;
 };
 
+function isSupabaseClientOptions(
+  input: SupabaseClientOptions | NodeJS.ProcessEnv | undefined,
+): input is SupabaseClientOptions {
+  return Boolean(
+    input &&
+      typeof input === "object" &&
+      "supabaseUrl" in input &&
+      "supabaseKey" in input,
+  );
+}
+
 function resolveClientOptions(
   input?: SupabaseClientOptions | NodeJS.ProcessEnv,
   keyName: "SUPABASE_SERVICE_ROLE_KEY" | "SUPABASE_ANON_KEY" = "SUPABASE_SERVICE_ROLE_KEY",
 ): SupabaseClientOptions {
-  if (input && "supabaseUrl" in input && "supabaseKey" in input) {
+  if (isSupabaseClientOptions(input)) {
     return input;
   }
 
-  const env = loadAppEnv(input);
+  const env = loadAppEnv(input ?? process.env);
 
   return {
     supabaseUrl: env.SUPABASE_URL,
