@@ -65,6 +65,8 @@ Na pratica, a autenticacao automatizada pode ser bloqueada pelo Cloudflare. Quan
 
 Para operacao mais segura no dia a dia, a configuracao padrao agora favorece `BROWSER_SESSION_MODE="dedicated-profile"`. Nesse modo, a automacao abre uma janela/perfil proprio do Chrome em vez de disputar a sua navegacao pessoal na janela principal.
 
+Quando o login no 99Freelas depender melhor do seu ambiente real do Chrome, tambem existe o modo `shared-profile`, que tenta abrir uma nova janela usando o mesmo perfil do seu Chrome ja utilizado no dia a dia.
+
 Tambem deixei a base configurada com `AUTOMATION_MODE="REVIEW_REQUIRED"` por padrao. A ideia aqui e comecar com um pipeline auditavel e seguro antes de habilitar qualquer submissao real. Isso protege sua conta, reputacao e evita automacoes ruins logo no inicio.
 
 No Supabase, configurei `auto_expose_new_tables = false` em `supabase/config.toml`. Essa escolha acompanha a direcao mais recente da plataforma e evita expor tabelas novas sem `GRANT` explicito.
@@ -155,6 +157,29 @@ Fluxo sugerido:
 - rode `pnpm auth:99freelas` uma vez para logar na janela dedicada da automacao
 - deixe essa janela/perfil reservado para o agente
 - use seu Chrome pessoal em outras abas ou janelas sem disputar a execucao do fluxo automatizado
+
+## Nova janela do seu Chrome
+
+Quando voce quiser aproveitar seus cookies, extensoes e historico do Chrome real para melhorar a validacao de login:
+
+```bash
+BROWSER_SESSION_MODE="shared-profile"
+BROWSER_USER_DATA_DIR="/caminho/para/o/user-data-do-seu-chrome"
+BROWSER_CHROME_PROFILE_DIRECTORY="Default"
+```
+
+No macOS, o caminho mais comum para `BROWSER_USER_DATA_DIR` e:
+
+```bash
+~/Library/Application Support/Google/Chrome
+```
+
+Observacoes:
+
+- esse modo tenta abrir uma nova janela no mesmo perfil do Chrome que voce ja usa
+- ele e melhor para login e validacoes humanas, mas traz mais risco de interferencia se voce mexer justamente nessa janela controlada
+- em alguns cenarios o Chrome reaproveita a sessao ja aberta e o Playwright perde o controle dessa nova janela; quando isso acontecer, prefira o fluxo live manual no Chrome ja aberto ou volte para `dedicated-profile`
+- para execucao continua e mais isolada, o modo `dedicated-profile` continua sendo o mais seguro
 
 ## Observacao com envio
 

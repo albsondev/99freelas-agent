@@ -23,6 +23,7 @@ export type MockSubmit99FreelasProposalInput = {
   sessionMode?: BrowserSessionMode;
   storageStatePath: string;
   userDataDir?: string;
+  chromeProfileDirectory?: string;
   timeoutMs?: number;
   beforeScreenshotPath?: string;
   afterScreenshotPath?: string;
@@ -106,6 +107,9 @@ async function run99FreelasProposalSubmission(
     ...(input.sessionMode ? { sessionMode: input.sessionMode } : {}),
     storageStatePath: input.storageStatePath,
     ...(input.userDataDir ? { userDataDir: input.userDataDir } : {}),
+    ...(input.chromeProfileDirectory
+      ? { chromeProfileDirectory: input.chromeProfileDirectory }
+      : {}),
   });
 
   try {

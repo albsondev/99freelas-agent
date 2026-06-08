@@ -16,6 +16,7 @@ export type Prefill99FreelasProposalInput = {
   screenshotPath?: string;
   storageStatePath: string;
   userDataDir?: string;
+  chromeProfileDirectory?: string;
   timeoutMs?: number;
 };
 
@@ -40,6 +41,9 @@ export async function prefill99FreelasProposalForm(
     ...(input.sessionMode ? { sessionMode: input.sessionMode } : {}),
     storageStatePath: input.storageStatePath,
     ...(input.userDataDir ? { userDataDir: input.userDataDir } : {}),
+    ...(input.chromeProfileDirectory
+      ? { chromeProfileDirectory: input.chromeProfileDirectory }
+      : {}),
   });
 
   try {

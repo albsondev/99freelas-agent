@@ -54,6 +54,7 @@ async function main() {
           headless: true,
           sessionMode: env.BROWSER_SESSION_MODE,
           storageStatePath: env.BROWSER_STORAGE_STATE_PATH,
+          chromeProfileDirectory: env.BROWSER_CHROME_PROFILE_DIRECTORY,
         });
 
         if (existingSession.isAuthenticated) {
@@ -81,6 +82,7 @@ async function main() {
       sessionMode: env.BROWSER_SESSION_MODE,
       storageStatePath: env.BROWSER_STORAGE_STATE_PATH,
       userDataDir: env.BROWSER_USER_DATA_DIR,
+      chromeProfileDirectory: env.BROWSER_CHROME_PROFILE_DIRECTORY,
     });
 
     console.log(
@@ -103,6 +105,7 @@ async function main() {
       headless: true,
       sessionMode: env.BROWSER_SESSION_MODE,
       storageStatePath: env.BROWSER_STORAGE_STATE_PATH,
+      chromeProfileDirectory: env.BROWSER_CHROME_PROFILE_DIRECTORY,
     });
 
     console.log(
@@ -161,6 +164,7 @@ async function main() {
       screenshotPath: `${env.BROWSER_SCREENSHOT_DIR}/proposal-prefill-${proposal.id}.png`,
       storageStatePath: env.BROWSER_STORAGE_STATE_PATH,
       userDataDir: env.BROWSER_USER_DATA_DIR,
+      chromeProfileDirectory: env.BROWSER_CHROME_PROFILE_DIRECTORY,
     });
 
     await proposals.update(proposal.id, {

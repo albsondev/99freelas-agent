@@ -1,8 +1,9 @@
 import { existsSync } from "node:fs";
 import { mkdir } from "node:fs/promises";
+import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { createInterface } from "node:readline/promises";
-import { stdin as input, stdout as output } from "node:process";
+import { platform, stdin as input, stdout as output } from "node:process";
 
 import { chromium, type Browser, type BrowserContext, type Page } from "playwright";
 
@@ -20,13 +21,15 @@ export type BrowserSessionResult = {
 export type BrowserSessionMode =
   | "auto"
   | "storage-state"
-  | "dedicated-profile";
+  | "dedicated-profile"
+  | "shared-profile";
 
 export type Authenticate99FreelasOptions = {
   headless?: boolean;
   sessionMode?: BrowserSessionMode;
   storageStatePath: string;
   userDataDir?: string;
+  chromeProfileDirectory?: string;
   timeoutMs?: number;
 };
 
@@ -35,6 +38,7 @@ export type Open99FreelasSessionContextOptions = {
   sessionMode?: BrowserSessionMode;
   storageStatePath: string;
   userDataDir?: string;
+  chromeProfileDirectory?: string;
 };
 
 export type Open99FreelasSessionContextResult = {
@@ -50,15 +54,24 @@ export async function authenticate99FreelasSession(
   options: Authenticate99FreelasOptions,
 ): Promise<BrowserSessionResult> {
   const storageStatePath = resolveProjectPath(options.storageStatePath);
-  const userDataDir = resolveProjectPath(
-    options.userDataDir ?? "./.auth/99freelas.automation-profile",
-  );
+  const sessionMode = options.sessionMode ?? "dedicated-profile";
+  const userDataDir = resolveBrowserUserDataDir({
+    sessionMode,
+    ...(options.userDataDir ? { userDataDir: options.userDataDir } : {}),
+  });
   await mkdir(dirname(storageStatePath), { recursive: true });
-  await mkdir(userDataDir, { recursive: true });
+  await ensureBrowserUserDataDir({
+    sessionMode,
+    userDataDir,
+  });
 
   const context = await launchPreferredPersistentContext({
     headless: false,
+    sessionMode,
     userDataDir,
+    ...(options.chromeProfileDirectory
+      ? { chromeProfileDirectory: options.chromeProfileDirectory }
+      : {}),
   });
 
   try {
@@ -95,9 +108,9 @@ export async function authenticate99FreelasSession(
       );
     }
 
-    await context.storageState({
-      path: storageStatePath,
-      indexedDB: true,
+    await persistStorageState({
+      context,
+      storageStatePath,
     });
 
     return result;
@@ -134,9 +147,10 @@ export async function open99FreelasSessionContext(
   options: Open99FreelasSessionContextOptions,
 ): Promise<Open99FreelasSessionContextResult> {
   const storageStatePath = resolveProjectPath(options.storageStatePath);
-  const userDataDir = resolveProjectPath(
-    options.userDataDir ?? "./.auth/99freelas.automation-profile",
-  );
+  const userDataDir = resolveBrowserUserDataDir({
+    sessionMode: options.sessionMode ?? "dedicated-profile",
+    ...(options.userDataDir ? { userDataDir: options.userDataDir } : {}),
+  });
   const sessionMode = options.sessionMode ?? "dedicated-profile";
 
   if (sessionMode === "storage-state") {
@@ -179,10 +193,17 @@ export async function open99FreelasSessionContext(
     };
   }
 
-  await mkdir(userDataDir, { recursive: true });
+  await ensureBrowserUserDataDir({
+    sessionMode,
+    userDataDir,
+  });
   const context = await launchPreferredPersistentContext({
     headless: options.headless ?? false,
+    sessionMode,
     userDataDir,
+    ...(options.chromeProfileDirectory
+      ? { chromeProfileDirectory: options.chromeProfileDirectory }
+      : {}),
   });
 
   return {
@@ -210,7 +231,7 @@ async function inspect99FreelasSession(
 
   const currentUrl = input.page.url();
   const cookies = await input.context.cookies();
-  const storageState = await input.context.storageState({ indexedDB: true });
+  const storageState = await readContextStorageState(input.context);
   const bodyText = await readBodyText(input.page);
   const detectedSignals: string[] = [];
 
@@ -323,7 +344,7 @@ function printAuthInstructions(input: {
         storageStatePath: input.storageStatePath,
         userDataDir: input.userDataDir,
         note:
-          "O navegador abriu em uma janela dedicada da automacao para voce concluir o login manualmente e salvar a sessao.",
+          "O navegador abriu em uma nova janela do Chrome para voce concluir o login manualmente e salvar a sessao.",
         requestedHeadless: input.requestedHeadless,
       },
       null,
@@ -335,7 +356,13 @@ function printAuthInstructions(input: {
 async function launchPreferredPersistentContext(input: {
   headless: boolean;
   userDataDir: string;
+  sessionMode: BrowserSessionMode;
+  chromeProfileDirectory?: string;
 }): Promise<BrowserContext> {
+  const launchArgs =
+    input.sessionMode === "shared-profile" && input.chromeProfileDirectory
+      ? [`--profile-directory=${input.chromeProfileDirectory}`, "--new-window"]
+      : undefined;
   const launchers: Array<{
     label: string;
     launch: () => Promise<BrowserContext>;
@@ -345,6 +372,7 @@ async function launchPreferredPersistentContext(input: {
       launch: () =>
         chromium.launchPersistentContext(input.userDataDir, {
           channel: "chrome",
+          ...(launchArgs ? { args: launchArgs } : {}),
           headless: input.headless,
         }),
     },
@@ -352,6 +380,7 @@ async function launchPreferredPersistentContext(input: {
       label: "chromium-persistent",
       launch: () =>
         chromium.launchPersistentContext(input.userDataDir, {
+          ...(launchArgs ? { args: launchArgs } : {}),
           headless: input.headless,
         }),
     },
@@ -363,7 +392,21 @@ async function launchPreferredPersistentContext(input: {
     try {
       return await launcher.launch();
     } catch (error) {
-      lastError = error;
+      const message = error instanceof Error ? error.message : String(error);
+
+      if (
+        input.sessionMode === "shared-profile" &&
+        /Abrindo em uma sess[aã]o de navegador existente|Target page, context or browser has been closed/i.test(
+          message,
+        )
+      ) {
+        lastError = new Error(
+          "O Chrome reutilizou a sessao ja aberta do seu perfil principal e o Playwright perdeu o controle da janela. Para automacao 100% controlada, use dedicated-profile. Para testes ao vivo no Chrome real, prefira o fluxo manual/observado no Chrome ja aberto.",
+        );
+      } else {
+        lastError = error;
+      }
+
       console.warn(
         JSON.stringify(
           {
@@ -371,7 +414,7 @@ async function launchPreferredPersistentContext(input: {
             command: "auth:99freelas",
             status: "browser-launch-fallback",
             browser: launcher.label,
-            message: error instanceof Error ? error.message : String(error),
+            message,
           },
           null,
           2,
@@ -383,6 +426,88 @@ async function launchPreferredPersistentContext(input: {
   throw lastError instanceof Error
     ? lastError
     : new Error("Failed to launch a persistent browser context for 99Freelas auth.");
+}
+
+async function readContextStorageState(context: BrowserContext): Promise<{
+  origins: Array<unknown>;
+}> {
+  try {
+    return await context.storageState({ indexedDB: true });
+  } catch {
+    return {
+      origins: [],
+    };
+  }
+}
+
+async function persistStorageState(input: {
+  context: BrowserContext;
+  storageStatePath: string;
+}): Promise<void> {
+  try {
+    await input.context.storageState({
+      path: input.storageStatePath,
+      indexedDB: true,
+    });
+  } catch (error) {
+    console.warn(
+      JSON.stringify(
+        {
+          service: "worker",
+          command: "auth:99freelas",
+          status: "storage-state-save-skipped",
+          message: error instanceof Error ? error.message : String(error),
+          storageStatePath: input.storageStatePath,
+        },
+        null,
+        2,
+      ),
+    );
+  }
+}
+
+async function ensureBrowserUserDataDir(input: {
+  sessionMode: BrowserSessionMode;
+  userDataDir: string;
+}): Promise<void> {
+  if (input.sessionMode === "shared-profile") {
+    if (!existsSync(input.userDataDir)) {
+      throw new Error(
+        `Chrome user data dir nao foi encontrado em ${input.userDataDir}. Ajuste BROWSER_USER_DATA_DIR para o caminho real do seu Chrome.`,
+      );
+    }
+
+    return;
+  }
+
+  await mkdir(input.userDataDir, { recursive: true });
+}
+
+function resolveBrowserUserDataDir(input: {
+  sessionMode: BrowserSessionMode;
+  userDataDir?: string;
+}): string {
+  if (input.userDataDir) {
+    return resolveProjectPath(input.userDataDir);
+  }
+
+  if (input.sessionMode === "shared-profile") {
+    return resolveSharedChromeUserDataDir();
+  }
+
+  return resolveProjectPath("./.auth/99freelas.automation-profile");
+}
+
+function resolveSharedChromeUserDataDir(): string {
+  if (platform === "darwin") {
+    return resolve(homedir(), "Library/Application Support/Google/Chrome");
+  }
+
+  if (platform === "win32") {
+    return resolve(homedir(), "AppData/Local/Google/Chrome/User Data");
+  }
+
+  return resolve(homedir(), ".config/google-chrome");
 }
 
 async function launchPreferredBrowser(input: {

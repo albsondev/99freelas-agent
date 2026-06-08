@@ -71,6 +71,7 @@ export async function executeProposalSubmitFlow(input: {
     sessionMode: input.env.BROWSER_SESSION_MODE,
     storageStatePath: input.env.BROWSER_STORAGE_STATE_PATH,
     userDataDir: input.env.BROWSER_USER_DATA_DIR,
+    chromeProfileDirectory: input.env.BROWSER_CHROME_PROFILE_DIRECTORY,
     beforeScreenshotPath: `${input.env.BROWSER_SCREENSHOT_DIR}/proposal-submit-before-${proposal.id}.png`,
     afterScreenshotPath: `${input.env.BROWSER_SCREENSHOT_DIR}/proposal-submit-after-${proposal.id}.png`,
     ...(input.observeBrowser
@@ -127,6 +128,7 @@ export async function executeProposalSubmitFlow(input: {
         sessionMode: input.env.BROWSER_SESSION_MODE,
         storageStatePath: input.env.BROWSER_STORAGE_STATE_PATH,
         userDataDir: input.env.BROWSER_USER_DATA_DIR,
+        chromeProfileDirectory: input.env.BROWSER_CHROME_PROFILE_DIRECTORY,
         beforeScreenshotPath: `${input.env.BROWSER_SCREENSHOT_DIR}/proposal-submit-before-${proposal.id}.png`,
         afterScreenshotPath: `${input.env.BROWSER_SCREENSHOT_DIR}/proposal-submit-after-${proposal.id}.png`,
         ...(input.observeBrowser
@@ -225,6 +227,7 @@ export async function executeProposalObserveFlow(input: {
     sessionMode: input.env.BROWSER_SESSION_MODE,
     storageStatePath: input.env.BROWSER_STORAGE_STATE_PATH,
     userDataDir: input.env.BROWSER_USER_DATA_DIR,
+    chromeProfileDirectory: input.env.BROWSER_CHROME_PROFILE_DIRECTORY,
     beforeScreenshotPath: `${input.env.BROWSER_SCREENSHOT_DIR}/proposal-observe-before-${proposal.id}.png`,
     afterScreenshotPath: `${input.env.BROWSER_SCREENSHOT_DIR}/proposal-observe-after-${proposal.id}.png`,
     observer: {
