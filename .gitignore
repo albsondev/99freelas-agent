@@ -11,4 +11,6 @@ coverage
 .audit
 .temp
 supabase/.temp
+__pycache__
+*.pyc
 *.tsbuildinfo
