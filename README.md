@@ -148,6 +148,7 @@ PYTHON_BROWSER_STORAGE_STATE_PATH="./.auth/99freelas.python-storage-state.json"
 Fluxo sugerido:
 
 - rode `pnpm auth:99freelas` uma vez para autenticar o navegador dedicado da automacao
+- a janela dedicada abre e o bootstrap fica monitorando ate detectar a sessao autenticada automaticamente
 - use `pnpm session:check` para confirmar a sessao
 - depois siga com `pnpm proposal:prefill`, `pnpm proposal:observe` ou `pnpm proposal:submit`
 

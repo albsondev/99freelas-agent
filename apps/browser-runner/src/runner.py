@@ -30,6 +30,8 @@ SUCCESS_TEXT_HINTS = [
     "Enviou Proposta",
     "Melhorar proposta",
 ]
+AUTH_BOOTSTRAP_TIMEOUT_MS = 15 * 60 * 1000
+AUTH_BOOTSTRAP_POLL_INTERVAL_MS = 2000
 
 
 async def main() -> None:
@@ -74,19 +76,43 @@ async def authenticate(payload: dict[str, Any]) -> dict[str, Any]:
                 return await inspect_session(context, page, payload)
 
             print(
-                "Janela da automacao Python aberta. Faça o login manual no 99Freelas e pressione Enter aqui no terminal quando terminar.",
+                (
+                    "Janela da automacao Python aberta. "
+                    "Faça o login manual no 99Freelas nessa janela dedicada. "
+                    "O runner vai detectar a sessao autenticada e salvar automaticamente, "
+                    "sem precisar pressionar Enter."
+                ),
                 flush=True,
             )
-            input()
+            deadline = asyncio.get_running_loop().time() + (
+                int(payload.get("authBootstrapTimeoutMs", AUTH_BOOTSTRAP_TIMEOUT_MS)) / 1000
+            )
 
-            await page.goto(DASHBOARD_URL, wait_until="domcontentloaded", timeout=payload_timeout(payload))
-            result = await inspect_session(context, page, payload)
-            if not result["isAuthenticated"]:
-                raise RuntimeError(
-                    "Sessao ainda nao parece autenticada. Faça login completo no navegador e rode o comando novamente."
-                )
+            while asyncio.get_running_loop().time() < deadline:
+                if page.is_closed():
+                    raise RuntimeError(
+                        "A janela da automacao foi fechada antes do login ser confirmado."
+                    )
 
-            return result
+                try:
+                    if await is_authenticated(page):
+                        result = await inspect_session(context, page, payload)
+                        if result["isAuthenticated"]:
+                            return result
+                    elif "/dashboard" in page.url:
+                        result = await inspect_session(context, page, payload)
+                        if result["isAuthenticated"]:
+                            return result
+                except Exception:
+                    # Durante o login o navegador pode redirecionar ou trocar de estado.
+                    # Nesse caso, basta aguardar a proxima rodada do polling.
+                    pass
+
+                await asyncio.sleep(AUTH_BOOTSTRAP_POLL_INTERVAL_MS / 1000)
+
+            raise RuntimeError(
+                "Tempo esgotado aguardando autenticacao manual no navegador dedicado."
+            )
         finally:
             await context.close()
 
