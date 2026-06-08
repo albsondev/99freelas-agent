@@ -42,6 +42,7 @@ As sete primeiras entregas agora cobrem a base do monorepo, a persistencia, a AP
 - comando `pnpm proposal:observe` para a IA escolher a melhor proposta elegivel, abrir o browser visivel e executar o fluxo passo a passo
 - captura de screenshots antes e depois do preenchimento final para auditoria local
 - guardrails centrais para envio real: score minimo, compliance aprovado, limites por hora/dia, modo `AUTOPILOT`, flag de ambiente e confirmacao explicita de CLI
+- runtime alternativo `Python + Playwright` para deixar a automacao rodando em navegador dedicado, separado do Chrome pessoal
 
 ## Limites desta fase
 
@@ -61,7 +62,10 @@ O clique real ficou preparado, mas so pode acontecer quando todas estas condicoe
 - limites horario e diario abaixo do teto
 - comando executado com `--live --confirm-live-submit`
 
-Na pratica, a autenticacao automatizada pode ser bloqueada pelo Cloudflare. Quando isso acontecer, a trilha recomendada e reaproveitar uma sessao manual ja autenticada no Chrome e iniciar a automacao a partir de uma aba real do projeto/proposta.
+Na pratica, a autenticacao automatizada pode ser bloqueada pelo Cloudflare. Quando isso acontecer, agora existem duas trilhas:
+
+- reaproveitar uma sessao manual ja autenticada no Chrome para observacao/live assistido
+- migrar a execucao do navegador para `Python + Playwright` em um navegador dedicado, sem disputar sua sessao principal
 
 Para operacao mais segura no dia a dia, a configuracao padrao agora favorece `BROWSER_SESSION_MODE="dedicated-profile"`. Nesse modo, a automacao abre uma janela/perfil proprio do Chrome em vez de disputar a sua navegacao pessoal na janela principal.
 
@@ -77,6 +81,7 @@ No Supabase, configurei `auto_expose_new_tables = false` em `supabase/config.tom
 apps/
   api/         Fastify + endpoints internos
   worker/      BullMQ + Playwright + orquestracao
+  browser-runner/ Python + Playwright para automacao isolada
   dashboard/   Next.js + auditoria e controle
 packages/
   core/         tipos e regras de negocio
@@ -121,6 +126,33 @@ pnpm proposal:observe
 pnpm proposal:submit
 ```
 
+## Runtime Python
+
+Para rodar a automacao em outro navegador e deixar o Chrome livre:
+
+```bash
+python3 -m pip install -r apps/browser-runner/requirements.txt
+python3 -m playwright install firefox
+```
+
+Depois configure no `.env.local`:
+
+```bash
+BROWSER_AUTOMATION_RUNTIME="python-playwright"
+PYTHON_EXECUTABLE="python3"
+PYTHON_BROWSER_NAME="firefox"
+PYTHON_BROWSER_PROFILE_DIR="./.auth/99freelas.python-profile"
+PYTHON_BROWSER_STORAGE_STATE_PATH="./.auth/99freelas.python-storage-state.json"
+```
+
+Fluxo sugerido:
+
+- rode `pnpm auth:99freelas` uma vez para autenticar o navegador dedicado da automacao
+- use `pnpm session:check` para confirmar a sessao
+- depois siga com `pnpm proposal:prefill`, `pnpm proposal:observe` ou `pnpm proposal:submit`
+
+Nesse modo, o worker continua usando Supabase, score, LLM e guardrails do projeto atual. O que muda e apenas o "braço" de browser automation.
+
 ## Proximos passos
 
 Com a Fase 8 praticamente fechada, os proximos passos ficam assim:
@@ -145,7 +177,7 @@ Flags uteis:
 
 ## Janela dedicada
 
-Para evitar interferencia com a sua navegacao normal, o recomendado e manter:
+Para evitar interferencia com a sua navegacao normal no runtime original de Node, o recomendado e manter:
 
 ```bash
 BROWSER_SESSION_MODE="dedicated-profile"

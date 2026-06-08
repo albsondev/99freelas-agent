@@ -47,6 +47,9 @@ export const appEnvSchema = z.object({
   OPENAI_MODEL: nonEmptyString.default("gpt-4.1-mini"),
   LLM_TEMPERATURE: z.coerce.number().min(0).max(2).default(0.35),
   LLM_MAX_TOKENS: z.coerce.number().int().positive().default(1200),
+  BROWSER_AUTOMATION_RUNTIME: z
+    .enum(["node-playwright", "python-playwright"])
+    .default("node-playwright"),
   BROWSER_HEADLESS: booleanFromEnv.default(false),
   BROWSER_SESSION_MODE: z
     .enum(["auto", "storage-state", "dedicated-profile", "shared-profile"])
@@ -55,6 +58,12 @@ export const appEnvSchema = z.object({
   BROWSER_USER_DATA_DIR: nonEmptyString.default("./.auth/99freelas.automation-profile"),
   BROWSER_CHROME_PROFILE_DIRECTORY: z.string().default("Default"),
   BROWSER_SCREENSHOT_DIR: nonEmptyString.default("./.audit/screenshots"),
+  PYTHON_EXECUTABLE: nonEmptyString.default("python3"),
+  PYTHON_BROWSER_NAME: z.enum(["chromium", "firefox", "webkit"]).default("firefox"),
+  PYTHON_BROWSER_PROFILE_DIR: nonEmptyString.default("./.auth/99freelas.python-profile"),
+  PYTHON_BROWSER_STORAGE_STATE_PATH: nonEmptyString.default(
+    "./.auth/99freelas.python-storage-state.json",
+  ),
   AUTOMATION_MODE: z.enum(["DRY_RUN", "REVIEW_REQUIRED", "AUTOPILOT"]).default("REVIEW_REQUIRED"),
   AUTOPILOT_MIN_SCORE: z.coerce.number().int().min(0).max(100).default(85),
   REVIEW_MIN_SCORE: z.coerce.number().int().min(0).max(100).default(60),

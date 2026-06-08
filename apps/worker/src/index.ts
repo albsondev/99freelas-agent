@@ -1,9 +1,12 @@
 import {
   authenticate99FreelasSession,
+  authenticate99FreelasSessionViaPython,
   createSupabaseAdminClient,
   OpportunityRepository,
   prefill99FreelasProposalForm,
+  prefill99FreelasProposalFormViaPython,
   ProposalRepository,
+  validate99FreelasSessionViaPython,
   validate99FreelasSession,
 } from "@99freelas/integrations";
 
@@ -48,6 +51,32 @@ async function main() {
   }
 
   if (command === "auth:99freelas") {
+    if (env.BROWSER_AUTOMATION_RUNTIME === "python-playwright") {
+      const session = await authenticate99FreelasSessionViaPython({
+        browserName: env.PYTHON_BROWSER_NAME,
+        headless: false,
+        profileDir: env.PYTHON_BROWSER_PROFILE_DIR,
+        pythonExecutable: env.PYTHON_EXECUTABLE,
+        screenshotDir: env.BROWSER_SCREENSHOT_DIR,
+        storageStatePath: env.PYTHON_BROWSER_STORAGE_STATE_PATH,
+      });
+
+      console.log(
+        JSON.stringify(
+          {
+            service: "worker",
+            command,
+            runtime: env.BROWSER_AUTOMATION_RUNTIME,
+            status: "session-saved",
+            session,
+          },
+          null,
+          2,
+        ),
+      );
+      return;
+    }
+
     assertWorkerControlledBrowserMode(env.BROWSER_SESSION_MODE, command);
 
     if (!shouldForce) {
@@ -103,6 +132,32 @@ async function main() {
   }
 
   if (command === "session:check") {
+    if (env.BROWSER_AUTOMATION_RUNTIME === "python-playwright") {
+      const session = await validate99FreelasSessionViaPython({
+        browserName: env.PYTHON_BROWSER_NAME,
+        headless: true,
+        profileDir: env.PYTHON_BROWSER_PROFILE_DIR,
+        pythonExecutable: env.PYTHON_EXECUTABLE,
+        screenshotDir: env.BROWSER_SCREENSHOT_DIR,
+        storageStatePath: env.PYTHON_BROWSER_STORAGE_STATE_PATH,
+      });
+
+      console.log(
+        JSON.stringify(
+          {
+            service: "worker",
+            command,
+            runtime: env.BROWSER_AUTOMATION_RUNTIME,
+            status: session.isAuthenticated ? "session-valid" : "session-invalid",
+            session,
+          },
+          null,
+          2,
+        ),
+      );
+      return;
+    }
+
     assertWorkerControlledBrowserMode(env.BROWSER_SESSION_MODE, command);
 
     const session = await validate99FreelasSession({
@@ -128,7 +183,9 @@ async function main() {
   }
 
   if (command === "proposal:prefill") {
-    assertWorkerControlledBrowserMode(env.BROWSER_SESSION_MODE, command);
+    if (env.BROWSER_AUTOMATION_RUNTIME !== "python-playwright") {
+      assertWorkerControlledBrowserMode(env.BROWSER_SESSION_MODE, command);
+    }
 
     const client = createSupabaseAdminClient({
       supabaseUrl: env.SUPABASE_URL,
@@ -160,18 +217,33 @@ async function main() {
       );
     }
 
-    const prefill = await prefill99FreelasProposalForm({
-      amount: proposal.amount,
-      deadlineDays: proposal.deadlineDays,
-      detailsText: proposal.detailsText,
-      headless: env.BROWSER_HEADLESS,
-      proposalPageUrl: opportunity.url,
-      sessionMode: env.BROWSER_SESSION_MODE,
-      screenshotPath: `${env.BROWSER_SCREENSHOT_DIR}/proposal-prefill-${proposal.id}.png`,
-      storageStatePath: env.BROWSER_STORAGE_STATE_PATH,
-      userDataDir: env.BROWSER_USER_DATA_DIR,
-      chromeProfileDirectory: env.BROWSER_CHROME_PROFILE_DIRECTORY,
-    });
+    const prefill =
+      env.BROWSER_AUTOMATION_RUNTIME === "python-playwright"
+        ? await prefill99FreelasProposalFormViaPython({
+            amount: proposal.amount,
+            browserName: env.PYTHON_BROWSER_NAME,
+            deadlineDays: proposal.deadlineDays,
+            detailsText: proposal.detailsText,
+            headless: env.BROWSER_HEADLESS,
+            profileDir: env.PYTHON_BROWSER_PROFILE_DIR,
+            proposalPageUrl: opportunity.url,
+            pythonExecutable: env.PYTHON_EXECUTABLE,
+            screenshotDir: env.BROWSER_SCREENSHOT_DIR,
+            screenshotPath: `${env.BROWSER_SCREENSHOT_DIR}/proposal-prefill-${proposal.id}.png`,
+            storageStatePath: env.PYTHON_BROWSER_STORAGE_STATE_PATH,
+          })
+        : await prefill99FreelasProposalForm({
+            amount: proposal.amount,
+            deadlineDays: proposal.deadlineDays,
+            detailsText: proposal.detailsText,
+            headless: env.BROWSER_HEADLESS,
+            proposalPageUrl: opportunity.url,
+            sessionMode: env.BROWSER_SESSION_MODE,
+            screenshotPath: `${env.BROWSER_SCREENSHOT_DIR}/proposal-prefill-${proposal.id}.png`,
+            storageStatePath: env.BROWSER_STORAGE_STATE_PATH,
+            userDataDir: env.BROWSER_USER_DATA_DIR,
+            chromeProfileDirectory: env.BROWSER_CHROME_PROFILE_DIRECTORY,
+          });
 
     await proposals.update(proposal.id, {
       before_screenshot_path: prefill.screenshotPath ?? null,
@@ -182,6 +254,7 @@ async function main() {
         {
           service: "worker",
           command,
+          runtime: env.BROWSER_AUTOMATION_RUNTIME,
           status: "prefilled",
           proposalId: proposal.id,
           opportunityId: opportunity.id,

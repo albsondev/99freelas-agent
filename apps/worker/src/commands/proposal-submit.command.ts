@@ -4,10 +4,12 @@ import {
   type BrowserSessionMode,
   createSupabaseAdminClient,
   DailyCounterRepository,
+  mockSubmit99FreelasProposalViaPython,
   mockSubmit99FreelasProposal,
   OpportunityRepository,
   ProposalRepository,
   submit99FreelasProposal,
+  submit99FreelasProposalViaPython,
   type ProposalObserverStep,
   type ProposalSubmissionBrowserResult,
 } from "@99freelas/integrations";
@@ -42,7 +44,7 @@ export async function executeProposalSubmitFlow(input: {
   stepDelayMs: number | undefined;
   holdOpenMs: number | undefined;
 }): Promise<ProposalSubmitExecutionResult> {
-  assertControlledBrowserMode(input.env.BROWSER_SESSION_MODE, "proposal:submit");
+  assertControlledBrowserRuntime(input.env, "proposal:submit");
 
   const client = createSupabaseAdminClient({
     supabaseUrl: input.env.SUPABASE_URL,
@@ -65,16 +67,12 @@ export async function executeProposalSubmitFlow(input: {
     counters.getByNameAndDate(currentHourName, today),
   ]);
 
-  const browser = await mockSubmit99FreelasProposal({
+  const browserInput = {
     amount: proposal.amount,
     deadlineDays: proposal.deadlineDays,
     detailsText: proposal.detailsText,
     headless: input.env.BROWSER_HEADLESS,
     proposalPageUrl: opportunity.url,
-    sessionMode: input.env.BROWSER_SESSION_MODE,
-    storageStatePath: input.env.BROWSER_STORAGE_STATE_PATH,
-    userDataDir: input.env.BROWSER_USER_DATA_DIR,
-    chromeProfileDirectory: input.env.BROWSER_CHROME_PROFILE_DIRECTORY,
     beforeScreenshotPath: `${input.env.BROWSER_SCREENSHOT_DIR}/proposal-submit-before-${proposal.id}.png`,
     afterScreenshotPath: `${input.env.BROWSER_SCREENSHOT_DIR}/proposal-submit-after-${proposal.id}.png`,
     ...(input.observeBrowser
@@ -83,13 +81,31 @@ export async function executeProposalSubmitFlow(input: {
             enabled: true,
             stepDelayMs: input.stepDelayMs ?? 1_800,
             holdOpenMs: input.holdOpenMs ?? 12_000,
-            onStep: (event) => {
+            onStep: (event: ProposalObserverStep) => {
               logObserverStep(`[submit:${proposal.id.slice(0, 8)}]`, event);
             },
           },
         }
       : {}),
-  });
+  };
+
+  const browser =
+    input.env.BROWSER_AUTOMATION_RUNTIME === "python-playwright"
+      ? await mockSubmit99FreelasProposalViaPython({
+          ...browserInput,
+          browserName: input.env.PYTHON_BROWSER_NAME,
+          profileDir: input.env.PYTHON_BROWSER_PROFILE_DIR,
+          pythonExecutable: input.env.PYTHON_EXECUTABLE,
+          screenshotDir: input.env.BROWSER_SCREENSHOT_DIR,
+          storageStatePath: input.env.PYTHON_BROWSER_STORAGE_STATE_PATH,
+        })
+      : await mockSubmit99FreelasProposal({
+          ...browserInput,
+          sessionMode: input.env.BROWSER_SESSION_MODE,
+          storageStatePath: input.env.BROWSER_STORAGE_STATE_PATH,
+          userDataDir: input.env.BROWSER_USER_DATA_DIR,
+          chromeProfileDirectory: input.env.BROWSER_CHROME_PROFILE_DIRECTORY,
+        });
 
   const guardrails = new ProposalSubmissionGuardrailsService().evaluate({
     mode: input.env.AUTOMATION_MODE,
@@ -122,31 +138,23 @@ export async function executeProposalSubmitFlow(input: {
 
   if (input.executeLiveSubmit) {
     if (guardrails.canSubmitForReal) {
-      finalBrowser = await submit99FreelasProposal({
-        amount: proposal.amount,
-        deadlineDays: proposal.deadlineDays,
-        detailsText: proposal.detailsText,
-        headless: input.env.BROWSER_HEADLESS,
-        proposalPageUrl: opportunity.url,
-        sessionMode: input.env.BROWSER_SESSION_MODE,
-        storageStatePath: input.env.BROWSER_STORAGE_STATE_PATH,
-        userDataDir: input.env.BROWSER_USER_DATA_DIR,
-        chromeProfileDirectory: input.env.BROWSER_CHROME_PROFILE_DIRECTORY,
-        beforeScreenshotPath: `${input.env.BROWSER_SCREENSHOT_DIR}/proposal-submit-before-${proposal.id}.png`,
-        afterScreenshotPath: `${input.env.BROWSER_SCREENSHOT_DIR}/proposal-submit-after-${proposal.id}.png`,
-        ...(input.observeBrowser
-          ? {
-              observer: {
-                enabled: true,
-                stepDelayMs: input.stepDelayMs ?? 1_800,
-                holdOpenMs: input.holdOpenMs ?? 12_000,
-                onStep: (event) => {
-                  logObserverStep(`[submit:${proposal.id.slice(0, 8)}]`, event);
-                },
-              },
-            }
-          : {}),
-      });
+      finalBrowser =
+        input.env.BROWSER_AUTOMATION_RUNTIME === "python-playwright"
+          ? await submit99FreelasProposalViaPython({
+              ...browserInput,
+              browserName: input.env.PYTHON_BROWSER_NAME,
+              profileDir: input.env.PYTHON_BROWSER_PROFILE_DIR,
+              pythonExecutable: input.env.PYTHON_EXECUTABLE,
+              screenshotDir: input.env.BROWSER_SCREENSHOT_DIR,
+              storageStatePath: input.env.PYTHON_BROWSER_STORAGE_STATE_PATH,
+            })
+          : await submit99FreelasProposal({
+              ...browserInput,
+              sessionMode: input.env.BROWSER_SESSION_MODE,
+              storageStatePath: input.env.BROWSER_STORAGE_STATE_PATH,
+              userDataDir: input.env.BROWSER_USER_DATA_DIR,
+              chromeProfileDirectory: input.env.BROWSER_CHROME_PROFILE_DIRECTORY,
+            });
 
       liveSubmitted = finalBrowser.submitted;
       submissionStatus = liveSubmitted ? "SUBMITTED" : "FAILED_REQUIRES_MANUAL_ACTION";
@@ -200,7 +208,7 @@ export async function executeProposalObserveFlow(input: {
   stepDelayMs: number | undefined;
   holdOpenMs: number | undefined;
 }): Promise<ProposalSubmitExecutionResult> {
-  assertControlledBrowserMode(input.env.BROWSER_SESSION_MODE, "proposal:observe");
+  assertControlledBrowserRuntime(input.env, "proposal:observe");
 
   const client = createSupabaseAdminClient({
     supabaseUrl: input.env.SUPABASE_URL,
@@ -223,27 +231,51 @@ export async function executeProposalObserveFlow(input: {
   ]);
 
   const observerPrefix = `[observer:${proposal.id.slice(0, 8)}]`;
-  const browser = await mockSubmit99FreelasProposal({
-    amount: proposal.amount,
-    deadlineDays: proposal.deadlineDays,
-    detailsText: proposal.detailsText,
-    headless: false,
-    proposalPageUrl: opportunity.url,
-    sessionMode: input.env.BROWSER_SESSION_MODE,
-    storageStatePath: input.env.BROWSER_STORAGE_STATE_PATH,
-    userDataDir: input.env.BROWSER_USER_DATA_DIR,
-    chromeProfileDirectory: input.env.BROWSER_CHROME_PROFILE_DIRECTORY,
-    beforeScreenshotPath: `${input.env.BROWSER_SCREENSHOT_DIR}/proposal-observe-before-${proposal.id}.png`,
-    afterScreenshotPath: `${input.env.BROWSER_SCREENSHOT_DIR}/proposal-observe-after-${proposal.id}.png`,
-    observer: {
-      enabled: true,
-      stepDelayMs: input.stepDelayMs ?? 1_800,
-      holdOpenMs: input.holdOpenMs ?? 45_000,
-      onStep: (event) => {
-        logObserverStep(observerPrefix, event);
-      },
-    },
-  });
+  const browser =
+    input.env.BROWSER_AUTOMATION_RUNTIME === "python-playwright"
+      ? await mockSubmit99FreelasProposalViaPython({
+          amount: proposal.amount,
+          browserName: input.env.PYTHON_BROWSER_NAME,
+          deadlineDays: proposal.deadlineDays,
+          detailsText: proposal.detailsText,
+          headless: false,
+          profileDir: input.env.PYTHON_BROWSER_PROFILE_DIR,
+          proposalPageUrl: opportunity.url,
+          pythonExecutable: input.env.PYTHON_EXECUTABLE,
+          screenshotDir: input.env.BROWSER_SCREENSHOT_DIR,
+          storageStatePath: input.env.PYTHON_BROWSER_STORAGE_STATE_PATH,
+          beforeScreenshotPath: `${input.env.BROWSER_SCREENSHOT_DIR}/proposal-observe-before-${proposal.id}.png`,
+          afterScreenshotPath: `${input.env.BROWSER_SCREENSHOT_DIR}/proposal-observe-after-${proposal.id}.png`,
+          observer: {
+            enabled: true,
+            stepDelayMs: input.stepDelayMs ?? 1_800,
+            holdOpenMs: input.holdOpenMs ?? 45_000,
+            onStep: (event: ProposalObserverStep) => {
+              logObserverStep(observerPrefix, event);
+            },
+          },
+        })
+      : await mockSubmit99FreelasProposal({
+          amount: proposal.amount,
+          deadlineDays: proposal.deadlineDays,
+          detailsText: proposal.detailsText,
+          headless: false,
+          proposalPageUrl: opportunity.url,
+          sessionMode: input.env.BROWSER_SESSION_MODE,
+          storageStatePath: input.env.BROWSER_STORAGE_STATE_PATH,
+          userDataDir: input.env.BROWSER_USER_DATA_DIR,
+          chromeProfileDirectory: input.env.BROWSER_CHROME_PROFILE_DIRECTORY,
+          beforeScreenshotPath: `${input.env.BROWSER_SCREENSHOT_DIR}/proposal-observe-before-${proposal.id}.png`,
+          afterScreenshotPath: `${input.env.BROWSER_SCREENSHOT_DIR}/proposal-observe-after-${proposal.id}.png`,
+          observer: {
+            enabled: true,
+            stepDelayMs: input.stepDelayMs ?? 1_800,
+            holdOpenMs: input.holdOpenMs ?? 45_000,
+            onStep: (event) => {
+              logObserverStep(observerPrefix, event);
+            },
+          },
+        });
 
   const guardrails = new ProposalSubmissionGuardrailsService().evaluate({
     mode: input.env.AUTOMATION_MODE,
@@ -441,10 +473,16 @@ function logObserverStep(prefix: string, event: ProposalObserverStep): void {
   );
 }
 
-function assertControlledBrowserMode(
-  sessionMode: BrowserSessionMode,
+function assertControlledBrowserRuntime(
+  env: WorkerEnv,
   command: "proposal:observe" | "proposal:submit",
 ): void {
+  if (env.BROWSER_AUTOMATION_RUNTIME === "python-playwright") {
+    return;
+  }
+
+  const sessionMode: BrowserSessionMode = env.BROWSER_SESSION_MODE;
+
   if (sessionMode !== "shared-profile") {
     return;
   }
