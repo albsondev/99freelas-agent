@@ -48,6 +48,8 @@ async function main() {
   }
 
   if (command === "auth:99freelas") {
+    assertWorkerControlledBrowserMode(env.BROWSER_SESSION_MODE, command);
+
     if (!shouldForce) {
       try {
         const existingSession = await validate99FreelasSession({
@@ -101,6 +103,8 @@ async function main() {
   }
 
   if (command === "session:check") {
+    assertWorkerControlledBrowserMode(env.BROWSER_SESSION_MODE, command);
+
     const session = await validate99FreelasSession({
       headless: true,
       sessionMode: env.BROWSER_SESSION_MODE,
@@ -124,6 +128,8 @@ async function main() {
   }
 
   if (command === "proposal:prefill") {
+    assertWorkerControlledBrowserMode(env.BROWSER_SESSION_MODE, command);
+
     const client = createSupabaseAdminClient({
       supabaseUrl: env.SUPABASE_URL,
       supabaseKey: env.SUPABASE_SERVICE_ROLE_KEY,
@@ -252,6 +258,24 @@ async function main() {
       null,
       2,
     ),
+  );
+}
+
+function assertWorkerControlledBrowserMode(
+  sessionMode: string,
+  command: "auth:99freelas" | "session:check" | "proposal:prefill",
+): void {
+  if (sessionMode !== "shared-profile") {
+    return;
+  }
+
+  throw new Error(
+    [
+      `O comando ${command} nao deve rodar com BROWSER_SESSION_MODE="shared-profile".`,
+      "Nesse modo, o Chrome principal pode reutilizar a sessao ja aberta e o Playwright perder o controle da nova janela.",
+      'Use BROWSER_SESSION_MODE="dedicated-profile" para automacao controlada do worker.',
+      "Se a ideia for acompanhar o Chrome real, prefira o fluxo live/manual observado fora do worker controlado.",
+    ].join(" "),
   );
 }
 

@@ -65,7 +65,7 @@ Na pratica, a autenticacao automatizada pode ser bloqueada pelo Cloudflare. Quan
 
 Para operacao mais segura no dia a dia, a configuracao padrao agora favorece `BROWSER_SESSION_MODE="dedicated-profile"`. Nesse modo, a automacao abre uma janela/perfil proprio do Chrome em vez de disputar a sua navegacao pessoal na janela principal.
 
-Quando o login no 99Freelas depender melhor do seu ambiente real do Chrome, tambem existe o modo `shared-profile`, que tenta abrir uma nova janela usando o mesmo perfil do seu Chrome ja utilizado no dia a dia.
+Quando o login no 99Freelas depender melhor do seu ambiente real do Chrome, tambem existe o modo `shared-profile`, mas ele deve ser tratado como apoio ao fluxo manual/observado no Chrome real, nao como automacao controlada garantida pelo worker.
 
 Tambem deixei a base configurada com `AUTOMATION_MODE="REVIEW_REQUIRED"` por padrao. A ideia aqui e comecar com um pipeline auditavel e seguro antes de habilitar qualquer submissao real. Isso protege sua conta, reputacao e evita automacoes ruins logo no inicio.
 
@@ -178,7 +178,8 @@ Observacoes:
 
 - esse modo tenta abrir uma nova janela no mesmo perfil do Chrome que voce ja usa
 - ele e melhor para login e validacoes humanas, mas traz mais risco de interferencia se voce mexer justamente nessa janela controlada
-- em alguns cenarios o Chrome reaproveita a sessao ja aberta e o Playwright perde o controle dessa nova janela; quando isso acontecer, prefira o fluxo live manual no Chrome ja aberto ou volte para `dedicated-profile`
+- em alguns cenarios o Chrome reaproveita a sessao ja aberta e o Playwright perde o controle dessa nova janela
+- por isso, o worker nao trata `shared-profile` como modo confiavel de automacao controlada; ele deve ser visto como apoio operacional ao fluxo manual/live no Chrome real
 - para execucao continua e mais isolada, o modo `dedicated-profile` continua sendo o mais seguro
 
 ## Observacao com envio

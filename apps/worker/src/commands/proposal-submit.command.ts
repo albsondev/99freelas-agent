@@ -1,6 +1,7 @@
 import type { Opportunity, Proposal, SubmissionStatus } from "@99freelas/core";
 import { ProposalSubmissionGuardrailsService } from "@99freelas/core";
 import {
+  type BrowserSessionMode,
   createSupabaseAdminClient,
   DailyCounterRepository,
   mockSubmit99FreelasProposal,
@@ -41,6 +42,8 @@ export async function executeProposalSubmitFlow(input: {
   stepDelayMs: number | undefined;
   holdOpenMs: number | undefined;
 }): Promise<ProposalSubmitExecutionResult> {
+  assertControlledBrowserMode(input.env.BROWSER_SESSION_MODE, "proposal:submit");
+
   const client = createSupabaseAdminClient({
     supabaseUrl: input.env.SUPABASE_URL,
     supabaseKey: input.env.SUPABASE_SERVICE_ROLE_KEY,
@@ -197,6 +200,8 @@ export async function executeProposalObserveFlow(input: {
   stepDelayMs: number | undefined;
   holdOpenMs: number | undefined;
 }): Promise<ProposalSubmitExecutionResult> {
+  assertControlledBrowserMode(input.env.BROWSER_SESSION_MODE, "proposal:observe");
+
   const client = createSupabaseAdminClient({
     supabaseUrl: input.env.SUPABASE_URL,
     supabaseKey: input.env.SUPABASE_SERVICE_ROLE_KEY,
@@ -433,6 +438,23 @@ function logObserverStep(prefix: string, event: ProposalObserverStep): void {
       null,
       2,
     ),
+  );
+}
+
+function assertControlledBrowserMode(
+  sessionMode: BrowserSessionMode,
+  command: "proposal:observe" | "proposal:submit",
+): void {
+  if (sessionMode !== "shared-profile") {
+    return;
+  }
+
+  throw new Error(
+    [
+      `O comando ${command} nao deve rodar com BROWSER_SESSION_MODE="shared-profile".`,
+      "Esse modo serve apenas como apoio ao fluxo manual/observado no Chrome real e nao oferece controle confiavel do Playwright sobre a nova janela.",
+      'Para automacao controlada do worker, troque para BROWSER_SESSION_MODE="dedicated-profile".',
+    ].join(" "),
   );
 }
 
