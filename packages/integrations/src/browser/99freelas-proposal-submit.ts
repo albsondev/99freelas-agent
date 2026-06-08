@@ -1,6 +1,7 @@
 import { mkdir } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 
+import type { BrowserSessionMode } from "./99freelas-auth.js";
 import { open99FreelasSessionContext } from "./99freelas-auth.js";
 import {
   build99FreelasProposalPageUrl,
@@ -19,6 +20,7 @@ export type MockSubmit99FreelasProposalInput = {
   detailsText: string;
   headless?: boolean;
   proposalPageUrl: string;
+  sessionMode?: BrowserSessionMode;
   storageStatePath: string;
   userDataDir?: string;
   timeoutMs?: number;
@@ -101,6 +103,7 @@ async function run99FreelasProposalSubmission(
 ): Promise<ProposalSubmissionBrowserResult> {
   const opened = await open99FreelasSessionContext({
     headless: input.headless ?? false,
+    ...(input.sessionMode ? { sessionMode: input.sessionMode } : {}),
     storageStatePath: input.storageStatePath,
     ...(input.userDataDir ? { userDataDir: input.userDataDir } : {}),
   });

@@ -48,8 +48,11 @@ export const appEnvSchema = z.object({
   LLM_TEMPERATURE: z.coerce.number().min(0).max(2).default(0.35),
   LLM_MAX_TOKENS: z.coerce.number().int().positive().default(1200),
   BROWSER_HEADLESS: booleanFromEnv.default(false),
+  BROWSER_SESSION_MODE: z
+    .enum(["auto", "storage-state", "dedicated-profile"])
+    .default("dedicated-profile"),
   BROWSER_STORAGE_STATE_PATH: nonEmptyString.default("./.auth/99freelas.storage-state.json"),
-  BROWSER_USER_DATA_DIR: nonEmptyString.default("./.auth/99freelas.chrome-profile"),
+  BROWSER_USER_DATA_DIR: nonEmptyString.default("./.auth/99freelas.automation-profile"),
   BROWSER_SCREENSHOT_DIR: nonEmptyString.default("./.audit/screenshots"),
   AUTOMATION_MODE: z.enum(["DRY_RUN", "REVIEW_REQUIRED", "AUTOPILOT"]).default("REVIEW_REQUIRED"),
   AUTOPILOT_MIN_SCORE: z.coerce.number().int().min(0).max(100).default(85),

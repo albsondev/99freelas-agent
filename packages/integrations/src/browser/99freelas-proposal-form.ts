@@ -1,6 +1,7 @@
 import { mkdir } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 
+import type { BrowserSessionMode } from "./99freelas-auth.js";
 import { open99FreelasSessionContext } from "./99freelas-auth.js";
 import { parse99FreelasProposalPage, type ProposalPageSnapshot } from "./99freelas-proposal-page.js";
 import { selectors99Freelas } from "./selectors/99freelas.selectors.js";
@@ -11,6 +12,7 @@ export type Prefill99FreelasProposalInput = {
   detailsText: string;
   headless?: boolean;
   proposalPageUrl: string;
+  sessionMode?: BrowserSessionMode;
   screenshotPath?: string;
   storageStatePath: string;
   userDataDir?: string;
@@ -35,6 +37,7 @@ export async function prefill99FreelasProposalForm(
 ): Promise<Prefill99FreelasProposalResult> {
   const opened = await open99FreelasSessionContext({
     headless: input.headless ?? false,
+    ...(input.sessionMode ? { sessionMode: input.sessionMode } : {}),
     storageStatePath: input.storageStatePath,
     ...(input.userDataDir ? { userDataDir: input.userDataDir } : {}),
   });

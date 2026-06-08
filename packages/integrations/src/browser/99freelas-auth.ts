@@ -17,8 +17,14 @@ export type BrowserSessionResult = {
   detectedSignals: string[];
 };
 
+export type BrowserSessionMode =
+  | "auto"
+  | "storage-state"
+  | "dedicated-profile";
+
 export type Authenticate99FreelasOptions = {
   headless?: boolean;
+  sessionMode?: BrowserSessionMode;
   storageStatePath: string;
   userDataDir?: string;
   timeoutMs?: number;
@@ -26,6 +32,7 @@ export type Authenticate99FreelasOptions = {
 
 export type Open99FreelasSessionContextOptions = {
   headless?: boolean;
+  sessionMode?: BrowserSessionMode;
   storageStatePath: string;
   userDataDir?: string;
 };
@@ -44,7 +51,7 @@ export async function authenticate99FreelasSession(
 ): Promise<BrowserSessionResult> {
   const storageStatePath = resolveProjectPath(options.storageStatePath);
   const userDataDir = resolveProjectPath(
-    options.userDataDir ?? "./.auth/99freelas.chrome-profile",
+    options.userDataDir ?? "./.auth/99freelas.automation-profile",
   );
   await mkdir(dirname(storageStatePath), { recursive: true });
   await mkdir(userDataDir, { recursive: true });
@@ -68,7 +75,11 @@ export async function authenticate99FreelasSession(
       timeout: timeoutMs,
     });
 
-    printAuthInstructions(storageStatePath, options.headless ?? false);
+    printAuthInstructions({
+      storageStatePath,
+      userDataDir,
+      requestedHeadless: options.headless ?? false,
+    });
     await promptForManualConfirmation();
 
     const result = await inspect99FreelasSession({
@@ -124,10 +135,34 @@ export async function open99FreelasSessionContext(
 ): Promise<Open99FreelasSessionContextResult> {
   const storageStatePath = resolveProjectPath(options.storageStatePath);
   const userDataDir = resolveProjectPath(
-    options.userDataDir ?? "./.auth/99freelas.chrome-profile",
+    options.userDataDir ?? "./.auth/99freelas.automation-profile",
   );
+  const sessionMode = options.sessionMode ?? "dedicated-profile";
 
-  if (existsSync(storageStatePath)) {
+  if (sessionMode === "storage-state") {
+    if (!existsSync(storageStatePath)) {
+      throw new Error(
+        `Storage state file was not found at ${storageStatePath}. Rode auth:99freelas ou use BROWSER_SESSION_MODE="dedicated-profile".`,
+      );
+    }
+
+    const browser = await launchPreferredBrowser({
+      headless: options.headless ?? true,
+    });
+    const context = await browser.newContext({
+      storageState: storageStatePath,
+    });
+
+    return {
+      mode: "storage-state",
+      context,
+      close: async () => {
+        await browser.close();
+      },
+    };
+  }
+
+  if (sessionMode === "auto" && existsSync(storageStatePath)) {
     const browser = await launchPreferredBrowser({
       headless: options.headless ?? true,
     });
@@ -273,7 +308,11 @@ async function promptForManualConfirmation(): Promise<void> {
   }
 }
 
-function printAuthInstructions(storageStatePath: string, requestedHeadless: boolean): void {
+function printAuthInstructions(input: {
+  storageStatePath: string;
+  userDataDir: string;
+  requestedHeadless: boolean;
+}): void {
   console.log(
     JSON.stringify(
       {
@@ -281,10 +320,11 @@ function printAuthInstructions(storageStatePath: string, requestedHeadless: bool
         command: "auth:99freelas",
         status: "awaiting-manual-login",
         loginUrl: selectors99Freelas.loginUrl,
-        storageStatePath,
+        storageStatePath: input.storageStatePath,
+        userDataDir: input.userDataDir,
         note:
-          "O navegador abriu em modo visual para voce concluir o login manualmente e salvar a sessao.",
-        requestedHeadless,
+          "O navegador abriu em uma janela dedicada da automacao para voce concluir o login manualmente e salvar a sessao.",
+        requestedHeadless: input.requestedHeadless,
       },
       null,
       2,

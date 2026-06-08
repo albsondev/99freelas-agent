@@ -52,6 +52,7 @@ async function main() {
       try {
         const existingSession = await validate99FreelasSession({
           headless: true,
+          sessionMode: env.BROWSER_SESSION_MODE,
           storageStatePath: env.BROWSER_STORAGE_STATE_PATH,
         });
 
@@ -77,6 +78,7 @@ async function main() {
 
     const session = await authenticate99FreelasSession({
       headless: env.BROWSER_HEADLESS,
+      sessionMode: env.BROWSER_SESSION_MODE,
       storageStatePath: env.BROWSER_STORAGE_STATE_PATH,
       userDataDir: env.BROWSER_USER_DATA_DIR,
     });
@@ -99,6 +101,7 @@ async function main() {
   if (command === "session:check") {
     const session = await validate99FreelasSession({
       headless: true,
+      sessionMode: env.BROWSER_SESSION_MODE,
       storageStatePath: env.BROWSER_STORAGE_STATE_PATH,
     });
 
@@ -154,6 +157,7 @@ async function main() {
       detailsText: proposal.detailsText,
       headless: env.BROWSER_HEADLESS,
       proposalPageUrl: opportunity.url,
+      sessionMode: env.BROWSER_SESSION_MODE,
       screenshotPath: `${env.BROWSER_SCREENSHOT_DIR}/proposal-prefill-${proposal.id}.png`,
       storageStatePath: env.BROWSER_STORAGE_STATE_PATH,
       userDataDir: env.BROWSER_USER_DATA_DIR,

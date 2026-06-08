@@ -31,6 +31,7 @@ As sete primeiras entregas agora cobrem a base do monorepo, a persistencia, a AP
 - endpoint manual `POST /opportunities/:id/generate-proposal` para regenerar proposta sem reimportar a oportunidade
 - camada Playwright inicial para autenticacao do 99Freelas
 - persistencia de `storageState` em `.auth/99freelas.storage-state.json`
+- perfil dedicado da automacao em `.auth/99freelas.automation-profile`
 - comando `pnpm auth:99freelas` com reaproveitamento de sessao salva
 - comando `pnpm session:check` para validar se a sessao ainda esta utilizavel
 - seletores reais do formulario de proposta mapeados a partir de uma aba autenticada no Chrome
@@ -61,6 +62,8 @@ O clique real ficou preparado, mas so pode acontecer quando todas estas condicoe
 - comando executado com `--live --confirm-live-submit`
 
 Na pratica, a autenticacao automatizada pode ser bloqueada pelo Cloudflare. Quando isso acontecer, a trilha recomendada e reaproveitar uma sessao manual ja autenticada no Chrome e iniciar a automacao a partir de uma aba real do projeto/proposta.
+
+Para operacao mais segura no dia a dia, a configuracao padrao agora favorece `BROWSER_SESSION_MODE="dedicated-profile"`. Nesse modo, a automacao abre uma janela/perfil proprio do Chrome em vez de disputar a sua navegacao pessoal na janela principal.
 
 Tambem deixei a base configurada com `AUTOMATION_MODE="REVIEW_REQUIRED"` por padrao. A ideia aqui e comecar com um pipeline auditavel e seguro antes de habilitar qualquer submissao real. Isso protege sua conta, reputacao e evita automacoes ruins logo no inicio.
 
@@ -137,6 +140,21 @@ Flags uteis:
 - `--proposal-id <id>` para observar uma proposta especifica
 - `--step-delay-ms 2000` para desacelerar cada etapa observada
 - `--hold-ms 60000` para manter a pagina aberta por mais tempo antes de fechar
+
+## Janela dedicada
+
+Para evitar interferencia com a sua navegacao normal, o recomendado e manter:
+
+```bash
+BROWSER_SESSION_MODE="dedicated-profile"
+BROWSER_USER_DATA_DIR="./.auth/99freelas.automation-profile"
+```
+
+Fluxo sugerido:
+
+- rode `pnpm auth:99freelas` uma vez para logar na janela dedicada da automacao
+- deixe essa janela/perfil reservado para o agente
+- use seu Chrome pessoal em outras abas ou janelas sem disputar a execucao do fluxo automatizado
 
 ## Observacao com envio
 
