@@ -25,6 +25,7 @@
     "import:url": "pnpm --filter @99freelas/api import:url",
     "proposal:generate": "pnpm --filter @99freelas/worker proposal:generate",
     "proposal:submit": "pnpm --filter @99freelas/worker proposal:submit",
+    "proposal:submit-batch": "pnpm --filter @99freelas/worker proposal:submit-batch",
     "db:migrate": "supabase migration up",
     "db:types": "supabase gen types typescript --local > packages/integrations/src/supabase/database.types.ts"
   },

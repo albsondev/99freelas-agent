@@ -19,6 +19,7 @@ import {
 import { QueueNames, type OpportunityFetchSweepAction } from "@99freelas/core";
 
 import {
+  executeProposalBatchFlow,
   executeProposalObserveFlow,
   executeProposalSubmitFlow,
 } from "./commands/proposal-submit.command.js";
@@ -415,6 +416,32 @@ async function main() {
             : result.submissionStatus === "PENDING"
               ? "mock-ready"
               : "mock-blocked",
+          result,
+        },
+        null,
+        2,
+      ),
+    );
+    return;
+  }
+
+  if (command === "proposal:submit-batch") {
+    const result = await executeProposalBatchFlow({
+      env,
+      limit: readNumberOption("--limit") ?? 2,
+      executeLiveSubmit: process.argv.includes("--live"),
+      confirmLiveSubmit: process.argv.includes("--confirm-live-submit"),
+      observeBrowser: process.argv.includes("--observe"),
+      stepDelayMs: readNumberOption("--step-delay-ms"),
+      holdOpenMs: readNumberOption("--hold-ms"),
+    });
+
+    console.log(
+      JSON.stringify(
+        {
+          service: "worker",
+          command,
+          status: "batch-complete",
           result,
         },
         null,

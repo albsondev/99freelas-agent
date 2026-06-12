@@ -57,10 +57,10 @@ describe("PricingService", () => {
     });
 
     expect(result.strategy).toBe("AVERAGE_BID_DISCOUNT");
-    expect(result.amount).toBe(270);
+    expect(result.amount).toBe(260);
   });
 
-  it("keeps the market discount even when it goes below the personal daily floor", () => {
+  it("raises discounted averages to the minimum allowed floor when needed", () => {
     const service = new PricingService();
     const result = service.calculate({
       title: "Customização de site WordPress (ajuste versão mobile)",
@@ -76,8 +76,27 @@ describe("PricingService", () => {
       priceDiscountFactor: 0.5,
     });
 
-    expect(result.strategy).toBe("AVERAGE_BID_DISCOUNT");
+    expect(result.strategy).toBe("MINIMUM_FLOOR");
     expect(result.amount).toBe(150);
-    expect(result.warnings).toEqual([]);
+    expect(result.warnings.length).toBeGreaterThan(0);
+  });
+
+  it("rounds discounted averages downward so the offer stays materially below the market", () => {
+    const service = new PricingService();
+    const result = service.calculate({
+      title: "Criação de site usando construtor SaaS",
+      description: "Site criado com base em templates prontos do construtor.",
+      skills: ["JavaScript", "TypeScript"],
+      deadlineDays: 4,
+      averageBidAmount: 610,
+      minimumPlatformOfferBrl: 50,
+      minimumProposalAmountBrl: 150,
+      minimumDailyRateBrl: 120,
+      defaultHourlyRateBrl: 50,
+      priceDiscountFactor: 0.5,
+    });
+
+    expect(result.strategy).toBe("AVERAGE_BID_DISCOUNT");
+    expect(result.amount).toBe(300);
   });
 });

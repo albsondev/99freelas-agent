@@ -48,6 +48,13 @@ export type ProposalSelectionResult = {
   reasons: string[];
 };
 
+export type ProposalBatchExecutionResult = {
+  processed: number;
+  requested: number;
+  results: ProposalSubmitExecutionResult[];
+  skipped: string[];
+};
+
 function withUpdatedProposalSelection(
   selection: ProposalSelectionResult,
   proposal: Proposal,
@@ -124,23 +131,40 @@ export async function executeProposalSubmitFlow(input: {
       : {}),
   };
 
-  const browser =
-    input.env.BROWSER_AUTOMATION_RUNTIME === "python-playwright"
-      ? await mockSubmit99FreelasProposalViaPython({
-          ...browserInput,
-          browserName: input.env.PYTHON_BROWSER_NAME,
-          profileDir: input.env.PYTHON_BROWSER_PROFILE_DIR,
-          pythonExecutable: input.env.PYTHON_EXECUTABLE,
-          screenshotDir: input.env.BROWSER_SCREENSHOT_DIR,
-          storageStatePath: input.env.PYTHON_BROWSER_STORAGE_STATE_PATH,
-        })
-      : await mockSubmit99FreelasProposal({
-          ...browserInput,
-          sessionMode: input.env.BROWSER_SESSION_MODE,
-          storageStatePath: input.env.BROWSER_STORAGE_STATE_PATH,
-          userDataDir: input.env.BROWSER_USER_DATA_DIR,
-          chromeProfileDirectory: input.env.BROWSER_CHROME_PROFILE_DIRECTORY,
-        });
+  let browser: ProposalSubmissionBrowserResult;
+
+  try {
+    browser =
+      input.env.BROWSER_AUTOMATION_RUNTIME === "python-playwright"
+        ? await mockSubmit99FreelasProposalViaPython({
+            ...browserInput,
+            browserName: input.env.PYTHON_BROWSER_NAME,
+            profileDir: input.env.PYTHON_BROWSER_PROFILE_DIR,
+            pythonExecutable: input.env.PYTHON_EXECUTABLE,
+            screenshotDir: input.env.BROWSER_SCREENSHOT_DIR,
+            storageStatePath: input.env.PYTHON_BROWSER_STORAGE_STATE_PATH,
+          })
+        : await mockSubmit99FreelasProposal({
+            ...browserInput,
+            sessionMode: input.env.BROWSER_SESSION_MODE,
+            storageStatePath: input.env.BROWSER_STORAGE_STATE_PATH,
+            userDataDir: input.env.BROWSER_USER_DATA_DIR,
+            chromeProfileDirectory: input.env.BROWSER_CHROME_PROFILE_DIRECTORY,
+          });
+  } catch (error) {
+    if (isDuplicatedProposalError(error)) {
+      return await finalizeDuplicatedProposal({
+        proposals,
+        opportunities,
+        proposal,
+        opportunity,
+        selection: preparedSelection,
+        reason: extractDuplicateProposalReason(error),
+      });
+    }
+
+    throw error;
+  }
 
   const guardrails = new ProposalSubmissionGuardrailsService().evaluate({
     mode: input.env.AUTOMATION_MODE,
@@ -241,6 +265,58 @@ export async function executeProposalSubmitFlow(input: {
       updated,
       updatedOpportunity ?? undefined,
     ),
+  };
+}
+
+async function finalizeDuplicatedProposal(input: {
+  proposals: ProposalRepository;
+  opportunities: OpportunityRepository;
+  proposal: Proposal;
+  opportunity: Opportunity;
+  selection: ProposalSelectionResult;
+  reason: string;
+}): Promise<ProposalSubmitExecutionResult> {
+  const updatedProposal = await input.proposals.update(input.proposal.id, {
+    submission_status: "DUPLICATED",
+    submission_error: input.reason,
+    submitted_at: input.proposal.submittedAt ?? null,
+  });
+
+  const updatedOpportunity = await input.opportunities.update(input.opportunity.id, {
+    status: "SUBMITTED",
+  });
+
+  const browser = buildDuplicatedBrowserResult(updatedProposal, updatedOpportunity, input.reason);
+  const guardrails = new ProposalSubmissionGuardrailsService().evaluate({
+    mode: "AUTOPILOT",
+    proposal: updatedProposal,
+    opportunity: updatedOpportunity,
+    browserReadiness: {
+      readyForManualSubmit: false,
+      blockingReasons: browser.blockingReasons,
+      warnings: browser.warnings,
+    },
+    allowRealSubmission: false,
+    explicitLiveConfirmation: false,
+    autopilotMinScore: 0,
+    minDetailsLength: 0,
+    dailySubmissionCount: 0,
+    hourlySubmissionCount: 0,
+    maxSubmissionsPerDay: 0,
+    maxSubmissionsPerHour: 0,
+  });
+
+  return {
+    proposalId: updatedProposal.id,
+    opportunityId: updatedOpportunity.id,
+    submissionStatus: "DUPLICATED",
+    submissionError: input.reason,
+    beforeScreenshotPath: null,
+    afterScreenshotPath: null,
+    liveSubmitted: false,
+    guardrails,
+    browser,
+    selection: withUpdatedProposalSelection(input.selection, updatedProposal, updatedOpportunity),
   };
 }
 
@@ -377,6 +453,66 @@ export async function executeProposalObserveFlow(input: {
   };
 }
 
+export async function executeProposalBatchFlow(input: {
+  env: WorkerEnv;
+  limit: number;
+  executeLiveSubmit: boolean | undefined;
+  confirmLiveSubmit: boolean | undefined;
+  observeBrowser: boolean | undefined;
+  stepDelayMs: number | undefined;
+  holdOpenMs: number | undefined;
+}): Promise<ProposalBatchExecutionResult> {
+  assertControlledBrowserRuntime(input.env, "proposal:submit");
+
+  const client = createSupabaseAdminClient({
+    supabaseUrl: input.env.SUPABASE_URL,
+    supabaseKey: input.env.SUPABASE_SERVICE_ROLE_KEY,
+  });
+  const proposals = new ProposalRepository(client);
+  const opportunities = new OpportunityRepository(client);
+  const candidates = await listProposalSelections({
+    proposals,
+    opportunities,
+    limit: Math.max(1, input.limit),
+  });
+
+  const results: ProposalSubmitExecutionResult[] = [];
+  const skipped: string[] = [];
+
+  for (const candidate of candidates) {
+    const batchSkipReason = getBatchSkipReason(candidate, input.env.AUTOPILOT_MIN_SCORE);
+
+    if (batchSkipReason) {
+      skipped.push(`${candidate.proposal.id}: ${batchSkipReason}`);
+      continue;
+    }
+
+    try {
+      const result = await executeProposalSubmitFlow({
+        env: input.env,
+        proposalId: candidate.proposal.id,
+        executeLiveSubmit: input.executeLiveSubmit,
+        confirmLiveSubmit: input.confirmLiveSubmit,
+        observeBrowser: input.observeBrowser,
+        stepDelayMs: input.stepDelayMs,
+        holdOpenMs: input.holdOpenMs,
+      });
+      results.push(result);
+    } catch (error) {
+      skipped.push(
+        `${candidate.proposal.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
+      );
+    }
+  }
+
+  return {
+    processed: results.length,
+    requested: input.limit,
+    results,
+    skipped,
+  };
+}
+
 async function refreshProposalUsingLivePageSignals(input: {
   env: WorkerEnv;
   proposals: ProposalRepository;
@@ -385,6 +521,17 @@ async function refreshProposalUsingLivePageSignals(input: {
   userProfiles: UserProfileRepository;
   selection: ProposalSelectionResult;
 }): Promise<ProposalSelectionResult> {
+  if (canReusePreparedProposal(input.selection, input.env.MIN_REAL_SUBMISSION_DETAILS_LENGTH)) {
+    return {
+      proposal: input.selection.proposal,
+      opportunity: input.selection.opportunity,
+      reasons: [
+        ...input.selection.reasons,
+        "Sinais comerciais existentes reaproveitados para evitar revalidacao headless desnecessaria.",
+      ],
+    };
+  }
+
   let inspected =
     input.env.BROWSER_AUTOMATION_RUNTIME === "python-playwright"
       ? await inspect99FreelasProposalPageViaPython({
@@ -617,6 +764,24 @@ async function refreshProposalUsingLivePageSignals(input: {
   };
 }
 
+function canReusePreparedProposal(
+  selection: ProposalSelectionResult,
+  minDetailsLength: number,
+): boolean {
+  const { proposal, opportunity } = selection;
+
+  return (
+    typeof opportunity.averageBidAmount === "number" &&
+    typeof opportunity.averageDeadlineDays === "number" &&
+    Number.isFinite(opportunity.averageBidAmount) &&
+    Number.isFinite(opportunity.averageDeadlineDays) &&
+    proposal.amount > 0 &&
+    proposal.deadlineDays > 0 &&
+    proposal.detailsText.trim().length >= minDetailsLength &&
+    proposal.complianceStatus === "APPROVED"
+  );
+}
+
 async function resolveProposalSelection(input: {
   proposals: ProposalRepository;
   opportunities: OpportunityRepository;
@@ -650,7 +815,31 @@ async function resolveProposalSelection(input: {
     };
   }
 
-  const proposals = await input.proposals.listRecent(30);
+  const bestCandidate = (
+    await listProposalSelections({
+      proposals: input.proposals,
+      opportunities: input.opportunities,
+      limit: 1,
+    })
+  )[0];
+
+  if (!bestCandidate) {
+    throw new Error("No eligible proposal is available for observation right now.");
+  }
+
+  return {
+    proposal: bestCandidate.proposal,
+    opportunity: bestCandidate.opportunity,
+    reasons: bestCandidate.reasons,
+  };
+}
+
+async function listProposalSelections(input: {
+  proposals: ProposalRepository;
+  opportunities: OpportunityRepository;
+  limit: number;
+}): Promise<Array<ProposalSelectionResult & { rank: number }>> {
+  const proposals = await input.proposals.listRecent(50);
   const candidates: Array<ProposalSelectionResult & { rank: number }> = [];
 
   for (const proposal of proposals) {
@@ -686,17 +875,46 @@ async function resolveProposalSelection(input: {
     });
   }
 
-  const bestCandidate = candidates.sort((a, b) => b.rank - a.rank)[0];
+  return candidates.sort((a, b) => b.rank - a.rank).slice(0, input.limit);
+}
 
-  if (!bestCandidate) {
-    throw new Error("No eligible proposal is available for observation right now.");
+function getBatchSkipReason(
+  candidate: ProposalSelectionResult & { rank: number },
+  autopilotMinScore: number,
+): string | null {
+  if (candidate.opportunity.decision !== "AUTO_SUBMIT") {
+    return "Opportunity is not marked as AUTO_SUBMIT.";
   }
 
-  return {
-    proposal: bestCandidate.proposal,
-    opportunity: bestCandidate.opportunity,
-    reasons: bestCandidate.reasons,
-  };
+  if ((candidate.opportunity.score ?? 0) < autopilotMinScore) {
+    return "Opportunity score is below the live batch minimum.";
+  }
+
+  const blockingFlags = new Set([
+    "EXTERNAL_CONTACT_REQUEST",
+    "OFF_PLATFORM_PAYMENT_REQUEST",
+    "UNCLEAR_SCOPE",
+    "LOW_BUDGET",
+    "LOW_AVERAGE_BID",
+    "IMPOSSIBLE_DEADLINE",
+    "PURE_DESIGN_SCOPE",
+    "MARKETING_SCOPE",
+    "NATIVE_APP_SCOPE",
+  ]);
+
+  const matchedBlockingFlags = candidate.opportunity.riskFlags.filter((flag) =>
+    blockingFlags.has(flag),
+  );
+
+  if (matchedBlockingFlags.length > 0) {
+    return `Opportunity has blocking risk flags: ${matchedBlockingFlags.join(", ")}.`;
+  }
+
+  if (candidate.proposal.complianceStatus !== "APPROVED") {
+    return "Proposal compliance is not approved.";
+  }
+
+  return null;
 }
 
 function computeProposalRank(proposal: Proposal, opportunity: Opportunity): number {
@@ -852,6 +1070,51 @@ function withOptional<TKey extends string, TValue>(
   value: TValue | undefined,
 ): { [key in TKey]?: TValue } {
   return value === undefined ? {} : { [key]: value } as { [key in TKey]?: TValue };
+}
+
+function isDuplicatedProposalError(error: unknown): boolean {
+  return error instanceof Error && error.message.includes("DUPLICATED_PROPOSAL:");
+}
+
+function extractDuplicateProposalReason(error: unknown): string {
+  if (!(error instanceof Error)) {
+    return "Projeto ja possui proposta enviada anteriormente.";
+  }
+
+  return error.message
+    .replace(/^.*DUPLICATED_PROPOSAL:\s*/s, "")
+    .trim();
+}
+
+function buildDuplicatedBrowserResult(
+  proposal: Proposal,
+  opportunity: Opportunity,
+  reason: string,
+): ProposalSubmissionBrowserResult {
+  return {
+    currentUrl: opportunity.url,
+    proposalPageUrl: opportunity.url,
+    filledAmount: proposal.amount.toFixed(2),
+    filledFinalAmount: proposal.amount.toFixed(2),
+    filledDeadlineDays: String(proposal.deadlineDays),
+    detailsLength: proposal.detailsText.length,
+    page: {
+      averageBidAmount: opportunity.averageBidAmount ?? null,
+      averageDeadlineDays: opportunity.averageDeadlineDays ?? null,
+      minimumOfferAmount: null,
+      availableConnections: null,
+      requiredConnections: null,
+      hasProposalForm: false,
+      hasQuestionChannel: false,
+    },
+    warnings: [],
+    blockingReasons: [reason],
+    readyForManualSubmit: false,
+    submitButtonVisible: false,
+    submitButtonEnabled: false,
+    submitAttempted: false,
+    submitted: false,
+  };
 }
 
 async function incrementCounter(

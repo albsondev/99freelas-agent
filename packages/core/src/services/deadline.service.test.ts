@@ -34,7 +34,7 @@ describe("DeadlineService", () => {
     expect(result.deadlineDays).toBeGreaterThanOrEqual(15);
   });
 
-  it("keeps simple wordpress mobile adjustments in a short delivery window", () => {
+  it("keeps simple wordpress mobile adjustments below the market average", () => {
     const service = new DeadlineService();
     const result = service.calculate({
       title: "Customização de site WordPress (ajuste versão mobile)",
@@ -47,6 +47,23 @@ describe("DeadlineService", () => {
       maxDeadlineDays: 45,
     });
 
-    expect(result.deadlineDays).toBe(2);
+    expect(result.deadlineDays).toBe(1);
+  });
+
+  it("does not let a broad system label override a real average deadline", () => {
+    const service = new DeadlineService();
+    const result = service.calculate({
+      title: "Criação de site usando construtor SaaS",
+      description:
+        "Cliente quer um site pronto usando um construtor SaaS com templates existentes.",
+      skills: ["JavaScript", "TypeScript"],
+      averageDeadlineDays: 5,
+      deadlineReductionFactor: 0.75,
+      minDeadlineDays: 2,
+      maxDeadlineDays: 45,
+    });
+
+    expect(result.strategy).toBe("AVERAGE_DEADLINE_REDUCTION");
+    expect(result.deadlineDays).toBeLessThan(5);
   });
 });

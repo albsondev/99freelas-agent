@@ -91,6 +91,7 @@ class PythonRunnerDaemon:
     def __init__(self, payload: dict[str, Any]) -> None:
         self.payload = payload
         self.playwright: Any | None = None
+        self.browser: Any | None = None
         self.context: BrowserContext | None = None
         self.server: asyncio.AbstractServer | None = None
         self.bootstrap_page: Page | None = None
@@ -98,11 +99,14 @@ class PythonRunnerDaemon:
 
     async def start(self) -> None:
         self.playwright = await async_playwright().start()
-        self.context = await launch_persistent_context(
+        self.browser, self.context = await launch_direct_context(
             self.playwright,
             self.payload,
             headless=bool(self.payload.get("headless", False)),
         )
+        if not bool(self.payload.get("headless", False)):
+            self.bootstrap_page = await get_or_create_context_page(self.context)
+            await focus_visible_page(self.bootstrap_page, self.payload)
 
     async def serve(self, output_path: str) -> None:
         host = self.payload.get("daemonHost", DEFAULT_DAEMON_HOST)
@@ -131,6 +135,10 @@ class PythonRunnerDaemon:
         if self.context is not None:
             await self.context.close()
             self.context = None
+
+        if self.browser is not None:
+            await self.browser.close()
+            self.browser = None
 
         if self.playwright is not None:
             await self.playwright.stop()
@@ -192,6 +200,10 @@ class PythonRunnerDaemon:
             "status": "ready",
             "authenticated": await is_authenticated(page, body_text),
             "currentUrl": page.url,
+            "browserName": self.payload.get("browserName", "chromium"),
+            "headless": bool(self.payload.get("headless", False)),
+            "storageStatePath": self.payload.get("storageStatePath"),
+            "profileDir": self.payload.get("profileDir"),
         }
 
     async def authenticate(self, payload: dict[str, Any]) -> dict[str, Any]:
@@ -234,47 +246,47 @@ class PythonRunnerDaemon:
         raise RuntimeError("Tempo esgotado aguardando autenticacao manual no navegador dedicado.")
 
     async def session_check(self, payload: dict[str, Any]) -> dict[str, Any]:
-        page = await self._new_page()
+        page = await self._acquire_page(payload)
         try:
             await page.goto(DASHBOARD_URL, wait_until="domcontentloaded", timeout=payload_timeout(payload))
             return await inspect_session(self._require_context(), page, payload)
         finally:
-            await page.close()
+            await self._release_page(page)
 
     async def proposal_prefill(self, payload: dict[str, Any]) -> dict[str, Any]:
-        page = await self._new_page()
+        page = await self._acquire_page(payload)
         try:
             return await proposal_prefill_core(self._require_context(), page, payload)
         finally:
-            await page.close()
+            await self._release_page(page)
 
     async def project_list_collect(self, payload: dict[str, Any]) -> dict[str, Any]:
-        page = await self._new_page()
+        page = await self._acquire_page(payload)
         try:
             return await collect_project_listing_core(page, payload)
         finally:
-            await page.close()
+            await self._release_page(page)
 
     async def project_page_scrape(self, payload: dict[str, Any]) -> dict[str, Any]:
-        page = await self._new_page()
+        page = await self._acquire_page(payload)
         try:
             return await scrape_project_page_core(page, payload)
         finally:
-            await page.close()
+            await self._release_page(page)
 
     async def proposal_page_inspect(self, payload: dict[str, Any]) -> dict[str, Any]:
-        page = await self._new_page()
+        page = await self._acquire_page(payload)
         try:
             return await inspect_proposal_page_core(page, payload)
         finally:
-            await page.close()
+            await self._release_page(page)
 
     async def proposal_submit(self, payload: dict[str, Any]) -> dict[str, Any]:
-        page = await self._new_page()
+        page = await self._acquire_page(payload)
         try:
             return await proposal_submit_core(self._require_context(), page, payload)
         finally:
-            await page.close()
+            await self._release_page(page)
 
     async def shutdown(self, payload: dict[str, Any]) -> dict[str, Any]:
         self._shutdown_event.set()
@@ -283,13 +295,25 @@ class PythonRunnerDaemon:
 
     async def _ensure_bootstrap_page(self, payload: dict[str, Any]) -> Page:
         if self.bootstrap_page and not self.bootstrap_page.is_closed():
+            await focus_visible_page(self.bootstrap_page, payload)
             return self.bootstrap_page
 
         self.bootstrap_page = await get_or_create_context_page(self._require_context())
+        await focus_visible_page(self.bootstrap_page, payload)
         return self.bootstrap_page
 
     async def _new_page(self) -> Page:
         return await self._require_context().new_page()
+
+    async def _acquire_page(self, payload: dict[str, Any]) -> Page:
+        if not bool(payload.get("headless", False)):
+            return await self._ensure_bootstrap_page(payload)
+        return await self._new_page()
+
+    async def _release_page(self, page: Page) -> None:
+        if self.bootstrap_page is not None and page == self.bootstrap_page:
+            return
+        await page.close()
 
     def _require_context(self) -> BrowserContext:
         if self.context is None:
@@ -519,6 +543,38 @@ async def get_or_create_context_page(context: BrowserContext) -> Page:
             return page
 
     return await context.new_page()
+
+
+async def focus_visible_page(page: Page, payload: dict[str, Any]) -> None:
+    if bool(payload.get("headless", False)):
+        return
+
+    try:
+        await page.bring_to_front()
+    except Exception:
+        pass
+
+    browser_name = str(payload.get("browserName", "chromium"))
+    app_name = {
+        "chromium": "Chromium",
+        "firefox": "Firefox",
+        "webkit": "Safari",
+    }.get(browser_name)
+
+    if not app_name:
+        return
+
+    try:
+        process = await asyncio.create_subprocess_exec(
+            "osascript",
+            "-e",
+            f'tell application "{app_name}" to activate',
+            stdout=asyncio.subprocess.DEVNULL,
+            stderr=asyncio.subprocess.DEVNULL,
+        )
+        await process.communicate()
+    except Exception:
+        pass
 
 
 async def inspect_session(
@@ -834,21 +890,69 @@ async def safe_body_text(page: Page) -> str:
 
 
 async def wait_for_proposal_form(page: Page, timeout_ms: int) -> None:
+    form_locator = page.locator("#proposal-form, form[action*='proposal'], #oferta").first
+
     try:
-        await page.locator("#proposal-form, form[action*='proposal'], #oferta").first.wait_for(
+        await form_locator.wait_for(
             state="visible",
-            timeout=timeout_ms,
+            timeout=min(timeout_ms, 4000),
         )
+        return
     except Exception as exc:
-        body_text = await safe_body_text(page)
-        compact_text = " ".join(body_text.split())[:500]
-        raise RuntimeError(
-            (
-                "Formulario de proposta nao ficou visivel. "
-                f"URL atual: {page.url}. "
-                f"Trecho carregado: {compact_text}"
+        await maybe_open_proposal_form_from_project_page(page, timeout_ms)
+
+        try:
+            await form_locator.wait_for(
+                state="visible",
+                timeout=timeout_ms,
             )
-        ) from exc
+            return
+        except Exception:
+            body_text = await safe_body_text(page)
+            if has_existing_submission_signal(body_text):
+                raise RuntimeError(
+                    (
+                        "DUPLICATED_PROPOSAL: "
+                        f"Projeto ja possui proposta enviada. URL atual: {page.url}."
+                    )
+                ) from exc
+            compact_text = " ".join(body_text.split())[:500]
+            raise RuntimeError(
+                (
+                    "Formulario de proposta nao ficou visivel. "
+                    f"URL atual: {page.url}. "
+                    f"Trecho carregado: {compact_text}"
+                )
+            ) from exc
+
+
+async def maybe_open_proposal_form_from_project_page(page: Page, timeout_ms: int) -> None:
+    if "/project/bid/" in page.url:
+        return
+
+    candidate_locators = [
+        page.locator("a[href*='/project/bid/']").first,
+        page.get_by_role("link", name=re.compile(r"Enviar proposta", re.I)).first,
+        page.get_by_role("button", name=re.compile(r"Enviar proposta", re.I)).first,
+        page.locator("a:has-text('Enviar proposta'), button:has-text('Enviar proposta')").first,
+    ]
+
+    for locator in candidate_locators:
+        body_text = await safe_body_text(page)
+        if has_existing_submission_signal(body_text):
+            return
+        if "Enviar proposta" not in body_text:
+            break
+
+        try:
+            if not await locator.is_visible(timeout=min(timeout_ms, 2500)):
+                continue
+            await locator.click()
+            await page.wait_for_load_state("domcontentloaded", timeout=min(timeout_ms, 10000))
+            await page.wait_for_timeout(1200)
+            return
+        except Exception:
+            continue
 
 
 async def wait_for_market_signals(page: Page, timeout_ms: int) -> str:
@@ -927,6 +1031,19 @@ def format_deadline_input(days: Any) -> str:
 
 def payload_timeout(payload: dict[str, Any]) -> int:
     return int(payload.get("timeoutMs", 45000))
+
+
+def has_existing_submission_signal(text: str) -> bool:
+    lowered = text.lower()
+    return (
+        "em andamento" in lowered
+        or
+        "melhorar proposta" in lowered
+        or "enviou proposta" in lowered
+        or "proposta enviada" in lowered
+        or "você já enviou uma proposta" in lowered
+        or "voce ja enviou uma proposta" in lowered
+    )
 
 
 def parse_page_snapshot(text: str) -> dict[str, Any]:

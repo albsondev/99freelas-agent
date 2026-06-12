@@ -133,6 +133,7 @@ pnpm auth:99freelas
 pnpm proposal:prefill
 pnpm proposal:observe
 pnpm proposal:submit
+pnpm proposal:submit-batch
 pnpm source:recommended
 pnpm source:hunt
 pnpm source:smart
@@ -165,6 +166,7 @@ Fluxo sugerido:
 - depois disso, o daemon reaproveita a mesma sessao e mantem o navegador de automacao separado do seu Chrome pessoal
 - use `pnpm session:check` para confirmar a sessao
 - siga com `pnpm proposal:prefill`, `pnpm proposal:observe` ou `pnpm proposal:submit`
+- para simular uso real com o mesmo Chromium visivel entre varias propostas, use `pnpm proposal:submit-batch`
 - quando quiser encerrar o navegador dedicado em segundo plano, use `pnpm session:shutdown`
 
 Nesse modo, o worker continua usando Supabase, score, LLM e guardrails do projeto atual. O que muda e apenas o "braço" de browser automation.

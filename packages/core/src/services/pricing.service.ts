@@ -35,18 +35,42 @@ function roundCommercialAmount(value: number): number {
   return Math.ceil(value / 50) * 50;
 }
 
+function roundDiscountedAmount(value: number, minimumFloor: number): number {
+  const rounded =
+    value < 500
+      ? Math.floor(value / 10) * 10
+      : Math.floor(value / 50) * 50;
+
+  if (rounded >= minimumFloor) {
+    return rounded;
+  }
+
+  if (minimumFloor < 500) {
+    return Math.ceil(minimumFloor / 10) * 10;
+  }
+
+  return Math.ceil(minimumFloor / 50) * 50;
+}
+
 export class PricingService {
   calculate(input: PricingInput): PricingResult {
     const warnings: string[] = [];
     const complexity = inferProjectComplexity(input);
+    const hasAverageBid =
+      input.averageBidAmount !== null && input.averageBidAmount !== undefined;
+    const averageBidAmount = hasAverageBid ? input.averageBidAmount! : null;
     const discountedAverage =
-      input.averageBidAmount !== null && input.averageBidAmount !== undefined
-        ? input.averageBidAmount * input.priceDiscountFactor
+      averageBidAmount !== null
+        ? averageBidAmount * input.priceDiscountFactor
         : null;
     const estimatedByHours = complexity.baseHours * input.defaultHourlyRateBrl;
     const budgetBasedReference =
       input.budgetMax ?? input.budgetMin ?? null;
     const minimumPlatformOfferBrl = Math.max(input.minimumPlatformOfferBrl ?? 0, 0);
+    const minimumDiscountFloor = Math.max(
+      minimumPlatformOfferBrl,
+      input.minimumProposalAmountBrl,
+    );
 
     let baseAmount = estimatedByHours;
     let strategy: PricingResult["strategy"] = "HOURLY_ESTIMATE";
@@ -67,14 +91,14 @@ export class PricingService {
     const commercialFloor = Math.max(input.minimumProposalAmountBrl, minimumByDeadline);
 
     if (discountedAverage !== null) {
-      if (baseAmount < minimumPlatformOfferBrl) {
+      if (baseAmount < minimumDiscountFloor) {
         warnings.push(
-          "Valor com desconto precisou subir para respeitar a oferta minima da plataforma.",
+          "Valor com desconto precisou subir para respeitar o piso minimo permitido.",
         );
-        baseAmount = minimumPlatformOfferBrl;
+        baseAmount = minimumDiscountFloor;
         strategy = "MINIMUM_FLOOR";
         explanation =
-          "Valor ajustado para respeitar a oferta minima exigida pela plataforma.";
+          "Valor ajustado para respeitar a oferta minima permitida sem perder competitividade.";
       }
     } else if (baseAmount < commercialFloor) {
       warnings.push(
@@ -86,10 +110,14 @@ export class PricingService {
         "Valor elevado para respeitar o minimo por proposta e o piso diario.";
     }
 
+    const finalAmount =
+      discountedAverage !== null
+        ? roundDiscountedAmount(baseAmount, minimumDiscountFloor)
+        : roundCommercialAmount(baseAmount);
+
     if (
-      input.averageBidAmount !== null &&
-      input.averageBidAmount !== undefined &&
-      roundCommercialAmount(baseAmount) >= input.averageBidAmount
+      averageBidAmount !== null &&
+      finalAmount >= averageBidAmount
     ) {
       warnings.push(
         "Desconto sobre a media perdeu agressividade depois da aplicacao dos pisos minimos.",
@@ -101,7 +129,7 @@ export class PricingService {
     }
 
     return {
-      amount: roundCommercialAmount(baseAmount),
+      amount: finalAmount,
       strategy,
       explanation,
       warnings,

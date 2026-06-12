@@ -107,11 +107,19 @@ const PROJECT_ROOT = resolve(dirname(PYTHON_RUNNER_SCRIPT_PATH), "..", "..", "..
 const DEFAULT_DAEMON_HOST = "127.0.0.1";
 const DEFAULT_DAEMON_PORT = 44731;
 
+type DaemonHealthResult = {
+  status: string;
+  browserName?: string;
+  headless?: boolean;
+  storageStatePath?: string;
+  profileDir?: string;
+};
+
 export async function authenticate99FreelasSessionViaPython(
   input: PythonRunnerAuthInput,
 ): Promise<BrowserSessionResult> {
   await shutdown99FreelasPythonRunnerDaemon(input).catch(() => undefined);
-  return runWithDaemonFallback<BrowserSessionResult>("auth", input, 16 * 60_000);
+  return runPythonCommandDirect<BrowserSessionResult>("auth", input, 16 * 60_000);
 }
 
 export async function validate99FreelasSessionViaPython(
@@ -202,8 +210,16 @@ export async function shutdown99FreelasPythonRunnerDaemon(
 }
 
 async function ensurePythonRunnerDaemon(input: PythonRunnerConfig): Promise<void> {
-  if (await isDaemonHealthy(input)) {
+  const health = await getDaemonHealth(input);
+  if (health && isCompatibleDaemonHealth(health, input)) {
     return;
+  }
+
+  if (health) {
+    await sendDaemonCommand("shutdown", input, 5_000).catch(() => undefined);
+    await new Promise((resolvePromise) => {
+      setTimeout(resolvePromise, 500);
+    });
   }
 
   const workdir = await mkdtemp(resolve(tmpdir(), "99freelas-python-daemon-"));
@@ -225,7 +241,7 @@ async function ensurePythonRunnerDaemon(input: PythonRunnerConfig): Promise<void
     );
     child.unref();
 
-    await waitForDaemonHealthy(input, 15_000);
+    await waitForDaemonHealthy(input, 45_000);
   } finally {
     await rm(workdir, { recursive: true, force: true });
   }
@@ -236,19 +252,51 @@ async function runWithDaemonFallback<T>(
   payload: unknown,
   timeoutMs: number,
 ): Promise<T> {
-  if (command !== "auth") {
+  if (command === "auth") {
     return runPythonCommandDirect<T>(command, payload, timeoutMs);
   }
 
-  if (wantsVisibleBrowser(payload)) {
+  if (!wantsVisibleBrowser(payload)) {
     return runPythonCommandDirect<T>(command, payload, timeoutMs);
   }
+
+  return runVisibleCommandWithDaemon<T>(
+    command,
+    payload as PythonRunnerConfig,
+    timeoutMs,
+  );
+}
+
+async function runVisibleCommandWithDaemon<T>(
+  command: DirectCommandName,
+  payload: PythonRunnerConfig,
+  timeoutMs: number,
+): Promise<T> {
+  let firstError: unknown;
 
   try {
-    await ensurePythonRunnerDaemon(payload as PythonRunnerConfig);
+    await ensurePythonRunnerDaemon(payload);
     return await sendDaemonCommand<T>(command, payload, timeoutMs);
   } catch (error) {
-    return runPythonCommandDirect<T>(command, payload, timeoutMs, error);
+    firstError = error;
+  }
+
+  await shutdown99FreelasPythonRunnerDaemon(payload).catch(() => undefined);
+  await new Promise((resolvePromise) => {
+    setTimeout(resolvePromise, 350);
+  });
+
+  try {
+    await ensurePythonRunnerDaemon(payload);
+    return await sendDaemonCommand<T>(command, payload, timeoutMs);
+  } catch (error) {
+    const primaryMessage =
+      error instanceof Error
+        ? error.message
+        : "Visible Python browser daemon command failed.";
+    const retryMessage =
+      firstError instanceof Error ? ` First attempt: ${firstError.message}` : "";
+    throw new Error(`${primaryMessage}${retryMessage}`);
   }
 }
 
@@ -262,11 +310,15 @@ function wantsVisibleBrowser(payload: unknown): boolean {
 }
 
 async function isDaemonHealthy(input: PythonRunnerConfig): Promise<boolean> {
+  const health = await getDaemonHealth(input);
+  return health?.status === "ready" && isCompatibleDaemonHealth(health, input);
+}
+
+async function getDaemonHealth(input: PythonRunnerConfig): Promise<DaemonHealthResult | null> {
   try {
-    const result = await sendDaemonCommand<{ status: string }>("health", input, 1_500);
-    return result.status === "ready";
+    return await sendDaemonCommand<DaemonHealthResult>("health", input, 4_000);
   } catch {
-    return false;
+    return null;
   }
 }
 
@@ -480,4 +532,17 @@ function extractDaemonPort(payload: unknown): number {
   }
 
   return DEFAULT_DAEMON_PORT;
+}
+
+function isCompatibleDaemonHealth(
+  health: DaemonHealthResult,
+  input: PythonRunnerConfig,
+): boolean {
+  return (
+    health.status === "ready" &&
+    health.browserName === input.browserName &&
+    health.headless === input.headless &&
+    health.storageStatePath === input.storageStatePath &&
+    health.profileDir === input.profileDir
+  );
 }
