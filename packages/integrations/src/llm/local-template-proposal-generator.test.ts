@@ -14,7 +14,7 @@ describe("local template proposal generator", () => {
         url: "https://www.99freelas.com.br/project/teste-1",
         title: "Correcao de bugs em sistema Next.js",
         description:
-          "Preciso corrigir erros em um sistema online feito com Next.js, React e Node.js. O foco e estabilizar o fluxo de login e alguns ajustes de dashboard.",
+          "Preciso corrigir erros em um sistema online feito com Next.js, React e Node.js. O foco é estabilizar o fluxo de login e alguns ajustes de dashboard.",
         category: "Desenvolvimento Web",
         skills: ["Next.js", "React", "Node.js"],
         rawPayload: {},
@@ -54,6 +54,8 @@ describe("local template proposal generator", () => {
     expect(result.llmModel).toBe("local-template-v1");
     expect(result.detailsText.toLowerCase()).not.toContain("whatsapp");
     expect(result.detailsText.toLowerCase()).not.toContain("http");
+    expect(result.detailsText).toContain("você");
+    expect(result.technicalSummary).toContain("execução");
   });
 
   it("switches to a more cautious tone when the scope is unclear", async () => {
@@ -91,8 +93,9 @@ describe("local template proposal generator", () => {
       riskFlags: ["UNCLEAR_SCOPE"],
     });
 
-    expect(result.detailsText).toContain("validando primeiro os pontos criticos");
+    expect(result.detailsText).toContain("validando primeiro os pontos críticos");
     expect(result.risks[0]).toContain("Escopo");
+    expect(result.risks[0]).toContain("análise");
     expect(result.qualityScore).toBeLessThan(90);
   });
 });

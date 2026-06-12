@@ -1,7 +1,12 @@
 import type { OpportunityDecision, OpportunityStatus } from "./decision.js";
 import type { JsonValue } from "./json.js";
 
-export type OpportunitySource = "EMAIL" | "MANUAL_URL" | "POLLING";
+export type OpportunitySource =
+  | "EMAIL"
+  | "MANUAL_URL"
+  | "POLLING"
+  | "RECOMMENDED_NOTIFICATION"
+  | "PROJECT_LISTING";
 
 export type Opportunity = {
   id: string;

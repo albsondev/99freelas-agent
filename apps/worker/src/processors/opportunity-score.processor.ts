@@ -6,13 +6,13 @@ import {
 import type {
   AutomationRunRepository,
   OpportunityRepository,
-  QueueProducer,
 } from "@99freelas/integrations";
+import type { ProcessorProducer } from "./processor-producer.js";
 
 type ProcessOpportunityScoreContext = {
   opportunities: OpportunityRepository;
   runs: AutomationRunRepository;
-  producer: QueueProducer;
+  producer: ProcessorProducer;
 };
 
 export async function processOpportunityScoreJob(

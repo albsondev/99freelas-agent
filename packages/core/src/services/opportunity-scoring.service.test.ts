@@ -78,4 +78,20 @@ describe("OpportunityScoringService", () => {
     expect(result.decisionHint).toBe("REVIEW_REQUIRED");
     expect(result.riskFlags).not.toContain("NATIVE_APP_SCOPE");
   });
+
+  it("keeps lawyer website requests in review when they match the preferred profile", () => {
+    const service = new OpportunityScoringService();
+    const result = service.score({
+      title: "Site para marca de advogado",
+      description:
+        "Preciso de um site para minha marca, sou advogado e não tenho logo nem nada, pode fazer tudo por mim.",
+      category: "Web, Mobile & Software / Desenvolvimento Web",
+      skills: [],
+      proposalCount: 86,
+    });
+
+    expect(result.decisionHint).toBe("REVIEW_REQUIRED");
+    expect(result.score).toBeGreaterThanOrEqual(60);
+    expect(result.reasons).toContain("Projeto de site para advocacia entra no perfil aceito.");
+  });
 });

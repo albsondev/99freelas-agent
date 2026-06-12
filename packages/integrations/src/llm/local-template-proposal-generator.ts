@@ -31,7 +31,7 @@ const DEFAULT_PROFILE: SerializedFreelancerProfile = {
   headline:
     "Desenvolvedor web focado em JavaScript, TypeScript, PHP, React, Vue.js, Next.js e Node.js",
   mainSkills: ["JavaScript", "TypeScript", "React", "Vue.js", "Next.js", "Node.js", "PHP"],
-  secondarySkills: ["WordPress", "APIs", "Supabase", "Landing Pages", "Correcao de bugs"],
+  secondarySkills: ["WordPress", "APIs", "Supabase", "Landing Pages", "Correção de bugs"],
   preferredProjectTypes: [
     "Sites pessoais",
     "Sites educacionais",
@@ -42,8 +42,8 @@ const DEFAULT_PROFILE: SerializedFreelancerProfile = {
     "Projetos Vue.js",
     "Projetos Next.js",
     "Projetos Node.js",
-    "Correcao de erros e bugs",
-    "Projetos WordPress com manutencao ou ajustes",
+    "Correção de erros e bugs",
+    "Projetos WordPress com manutenção ou ajustes",
   ],
   blockedProjectTypes: [
     "AWS e Azure",
@@ -52,7 +52,7 @@ const DEFAULT_PROFILE: SerializedFreelancerProfile = {
     "React Native complexo",
   ],
   portfolioSummary:
-    "Experiencia com sistemas web sob medida, manutencao evolutiva, correcao de bugs, integracoes e entregas enxutas para projetos web.",
+    "Experiência com sistemas web sob medida, manutenção evolutiva, correção de bugs, integrações e entregas enxutas para projetos web.",
 };
 
 export function createLocalTemplateProposalProvider(): ProposalLlmProvider {
@@ -74,7 +74,7 @@ function buildLocalTemplateProposal(
   const technicalSummary = compactWhitespace(
     [
       `Abordagem focada em ${projectType}`,
-      `com execucao objetiva em ${input.deadlineDays} dias`,
+      `com execução objetiva em ${input.deadlineDays} dias`,
       `e prioridade em ${joinListForSentence(focusSkills.slice(0, 3))}.`,
     ].join(" "),
   );
@@ -157,8 +157,8 @@ function inferProjectType(opportunity: Opportunity, focusSkills: string[]): stri
     `${opportunity.title ?? ""} ${opportunity.description ?? ""} ${opportunity.category ?? ""}`.toLowerCase(),
   );
 
-  if (/\bbug|erro|correcao|ajuste|manutenc/.test(source)) {
-    return "correcao de bugs e estabilizacao";
+  if (/\bbug|erro|corre(?:ç|c)[aã]o|ajuste|manuten/.test(source)) {
+    return "correção de bugs e estabilização";
   }
 
   if (/\blanding page\b|\blp\b/.test(source)) {
@@ -166,7 +166,7 @@ function inferProjectType(opportunity: Opportunity, focusSkills: string[]): stri
   }
 
   if (focusSkills.some((skill) => skill === "WordPress")) {
-    return "ajustes ou evolucao em WordPress";
+    return "ajustes ou evolução em WordPress";
   }
 
   if (focusSkills.some((skill) => skill === "Next.js")) {
@@ -185,7 +185,7 @@ function inferProjectType(opportunity: Opportunity, focusSkills: string[]): stri
     return "projeto web em PHP";
   }
 
-  return "projeto web sob medida";
+    return "projeto web sob medida";
 }
 
 function shouldUseCautiousTone(
@@ -216,12 +216,12 @@ function buildContextParagraph(
 
   if (cautionMode) {
     return compactWhitespace(
-      `Li o escopo de ${title} e a melhor forma de conduzir ${projectType} aqui e com uma entrada bem objetiva, validando primeiro os pontos criticos do fluxo antes de expandir o trabalho. Tenho aderencia pratica com ${skillBlock}, o que ajuda a atacar a entrega com foco tecnico e sem prometer alem do que o projeto mostra hoje.`,
+      `Li o escopo de ${title} e a melhor forma de conduzir ${projectType} aqui é com uma entrada bem objetiva, validando primeiro os pontos críticos do fluxo antes de expandir o trabalho. Tenho aderência prática com ${skillBlock}, o que ajuda a atacar a entrega com foco técnico e sem prometer além do que o projeto mostra hoje.`,
     );
   }
 
   return compactWhitespace(
-    `Analisei o projeto ${title} e ele conversa bem com um fluxo de ${projectType}, principalmente pela combinacao de ${skillBlock}. A proposta aqui e entrar ja com entendimento do contexto, reduzir retrabalho e entregar uma solucao enxuta, segura e alinhada ao que voce precisa colocar de pe rapidamente.`,
+    `Analisei o projeto ${title} e ele conversa bem com um fluxo de ${projectType}, principalmente pela combinação de ${skillBlock}. A proposta aqui é entrar já com entendimento do contexto, reduzir retrabalho e entregar uma solução enxuta, segura e alinhada ao que você precisa colocar de pé rapidamente.`,
   );
 }
 
@@ -230,11 +230,11 @@ function buildExecutionParagraph(
   focusSkills: string[],
   cautionMode: boolean,
 ): string {
-  const executionLabel = cautionMode ? "diagnostico e entrega faseada" : "execucao direta";
+  const executionLabel = cautionMode ? "diagnóstico e entrega faseada" : "execução direta";
   const skillsTail = joinListForSentence(focusSkills.slice(0, 2));
 
   return compactWhitespace(
-    `Minha abordagem e seguir com ${executionLabel}: revisar o que ja existe, ajustar os pontos prioritarios, validar os cenarios principais e deixar a entrega organizada para continuidade. Consigo trabalhar com ${skillsTail} em uma janela realista de ${input.deadlineDays} dias, mantendo comunicacao clara pela plataforma e uma implementacao competitiva sem sacrificar estabilidade.`,
+    `Minha abordagem é seguir com ${executionLabel}: revisar o que já existe, ajustar os pontos prioritários, validar os cenários principais e deixar a entrega organizada para continuidade. Consigo trabalhar com ${skillsTail} em uma janela realista de ${input.deadlineDays} dias, mantendo comunicação clara pela plataforma e uma implementação competitiva sem sacrificar estabilidade.`,
   );
 }
 
@@ -246,11 +246,11 @@ function buildRiskControlParagraph(
     typeof input.opportunity.averageBidAmount === "number" &&
     input.opportunity.averageBidAmount > 0;
   const scopeHint = input.riskFlags.includes("UNCLEAR_SCOPE")
-    ? "Como o escopo ainda pede algumas confirmacoes, eu costumo alinhar logo no inicio as regras de negocio e os limites da entrega para evitar retrabalho."
-    : "Se houver integracoes, regras de negocio sensiveis ou algum ponto legado, eu costumo tratar isso logo no inicio para reduzir risco de regressao.";
+    ? "Como o escopo ainda pede algumas confirmações, eu costumo alinhar logo no início as regras de negócio e os limites da entrega para evitar retrabalho."
+    : "Se houver integrações, regras de negócio sensíveis ou algum ponto legado, eu costumo tratar isso logo no início para reduzir risco de regressão.";
   const bidHint = hasAverageBid
-    ? "A estrategia comercial ja foi ajustada para manter a proposta competitiva frente a media observada."
-    : "A estrategia comercial foi pensada para manter a proposta objetiva e atrativa dentro do contexto atual.";
+    ? "A estratégia comercial já foi ajustada para manter a proposta competitiva frente à média observada."
+    : "A estratégia comercial foi pensada para manter a proposta objetiva e atrativa dentro do contexto atual.";
 
   if (cautionMode) {
     return compactWhitespace(`${scopeHint} ${bidHint}`);
@@ -264,8 +264,8 @@ function buildAssumptions(
   projectType: string,
 ): string[] {
   const items = [
-    `O escopo principal esta concentrado em ${projectType}.`,
-    "O acesso ao ambiente ou aos arquivos necessarios sera disponibilizado no inicio.",
+    `O escopo principal está concentrado em ${projectType}.`,
+    "O acesso ao ambiente ou aos arquivos necessários será disponibilizado no início.",
     input.opportunity.averageDeadlineDays
       ? `A expectativa de prazo do mercado para este projeto gira em torno de ${input.opportunity.averageDeadlineDays} dias.`
       : `O prazo proposto de ${input.deadlineDays} dias considera uma entrega enxuta e priorizada.`,
@@ -279,11 +279,11 @@ function buildQuestions(
   projectType: string,
 ): string[] {
   const items = [
-    `Existe algum fluxo mais critico dentro de ${projectType} que precisa ser priorizado ja na primeira entrega?`,
-    "Voce ja possui ambiente de homologacao ou o ajuste precisa acontecer direto no ambiente atual?",
+    `Existe algum fluxo mais crítico dentro de ${projectType} que precisa ser priorizado já na primeira entrega?`,
+    "Você já possui ambiente de homologação ou o ajuste precisa acontecer direto no ambiente atual?",
     input.opportunity.proposalCount && input.opportunity.proposalCount > 10
-      ? "Ha alguma restricao tecnica ou de negocio que ainda nao apareceu na descricao publica do projeto?"
-      : "Existe alguma referencia visual ou tecnica que voce espera que seja seguida?",
+      ? "Há alguma restrição técnica ou de negócio que ainda não apareceu na descrição pública do projeto?"
+      : "Existe alguma referência visual ou técnica que você espera que seja seguida?",
   ];
 
   return items.slice(0, 3);
@@ -295,11 +295,11 @@ function buildRisks(
 ): string[] {
   const items = [
     input.riskFlags.includes("UNCLEAR_SCOPE")
-      ? "Escopo ainda parcialmente aberto, com chance de ajuste fino apos a analise inicial."
-      : "Dependencias legadas ou regras escondidas podem exigir ajuste fino apos a validacao tecnica.",
+      ? "Escopo ainda parcialmente aberto, com chance de ajuste fino após a análise inicial."
+      : "Dependências legadas ou regras escondidas podem exigir ajuste fino após a validação técnica.",
     cautionMode
-      ? "Se houver stack paralela nao descrita, pode ser necessario replanejar parte da execucao."
-      : "Mudancas fora do escopo principal podem impactar prazo se entrarem no meio da execucao.",
+      ? "Se houver stack paralela não descrita, pode ser necessário replanejar parte da execução."
+      : "Mudanças fora do escopo principal podem impactar prazo se entrarem no meio da execução.",
   ];
 
   return items.slice(0, 2);

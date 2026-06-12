@@ -2,13 +2,18 @@ import type { JsonValue } from "./domain/json.js";
 import type { QueueName } from "./queue-names.js";
 
 export type OpportunityProcessingReason = "IMPORT_URL" | "PROCESS" | "REPROCESS";
+export type OpportunityFetchSweepAction =
+  | "PROCESS_PENDING_SWEEP"
+  | "RETRY_FAILED_SWEEP"
+  | "PROCESS_RECOMMENDED_NOTIFICATIONS"
+  | "HUNT_PROJECT_LIST";
 
 export type JobLifecyclePayload = {
   runId: string;
 };
 
 export type OpportunityFetchSweepJobPayload = JobLifecyclePayload & {
-  action: "PROCESS_PENDING_SWEEP" | "RETRY_FAILED_SWEEP";
+  action: OpportunityFetchSweepAction;
 };
 
 export type OpportunityFetchJobPayload = JobLifecyclePayload &

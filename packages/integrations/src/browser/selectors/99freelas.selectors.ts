@@ -2,7 +2,16 @@ export const selectors99Freelas = {
   loginUrl: "https://www.99freelas.com.br/login",
   dashboardUrl: "https://www.99freelas.com.br/projetos",
   projectListUrl: "https://www.99freelas.com.br/projects",
+  recommendedNotificationsUrl:
+    "https://www.99freelas.com.br/project-notifications/view?limit=20",
   homeUrl: "https://www.99freelas.com.br/",
+  notificationsBell: 'a[href*="/project-notifications"], a[href*="/notifications"]',
+  notificationProjectLinks:
+    'a[href*="/project/"]:not([href*="/project/message/"]):not([href*="/project/bid/"])',
+  projectListCards:
+    '[data-testid="project-card"], .project-item, .project-list-item, article, li',
+  projectListLinks:
+    'a[href*="/project/"]:not([href*="/project/message/"]):not([href*="/project/bid/"])',
   authenticatedMarkers: [
     'a[href*="logout"]',
     'a[href*="sair"]',

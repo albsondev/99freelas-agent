@@ -1,21 +1,30 @@
 import {
+  AutomationRunRepository,
   authenticate99FreelasSession,
   authenticate99FreelasSessionViaPython,
+  createLocalTemplateProposalProvider,
+  createProposalLlmProvider,
   createSupabaseAdminClient,
   OpportunityRepository,
   prefill99FreelasProposalForm,
   prefill99FreelasProposalFormViaPython,
+  ProposalLlmProvider,
   ProposalRepository,
+  SettingsRepository,
   shutdown99FreelasPythonRunnerDaemon,
+  UserProfileRepository,
   validate99FreelasSessionViaPython,
   validate99FreelasSession,
 } from "@99freelas/integrations";
+import { QueueNames, type OpportunityFetchSweepAction } from "@99freelas/core";
 
 import {
   executeProposalObserveFlow,
   executeProposalSubmitFlow,
 } from "./commands/proposal-submit.command.js";
 import { loadWorkerEnv } from "./env.js";
+import { createInlineOpportunityPipelineProducer } from "./processors/inline-opportunity-pipeline.js";
+import { processOpportunityFetchJob } from "./processors/opportunity-fetch.processor.js";
 import { registerWorkers } from "./queues/register-workers.js";
 
 async function main() {
@@ -226,6 +235,80 @@ async function main() {
     return;
   }
 
+  if (
+    command === "source:recommended" ||
+    command === "source:hunt" ||
+    command === "source:smart"
+  ) {
+    const action: OpportunityFetchSweepAction =
+      command === "source:recommended"
+        ? "PROCESS_RECOMMENDED_NOTIFICATIONS"
+        : command === "source:hunt"
+          ? "HUNT_PROJECT_LIST"
+          : "PROCESS_PENDING_SWEEP";
+
+    const client = createSupabaseAdminClient({
+      supabaseUrl: env.SUPABASE_URL,
+      supabaseKey: env.SUPABASE_SERVICE_ROLE_KEY,
+    });
+    const runs = new AutomationRunRepository(client);
+    const opportunities = new OpportunityRepository(client);
+    const proposals = new ProposalRepository(client);
+    const settings = new SettingsRepository(client);
+    const userProfiles = new UserProfileRepository(client);
+    const llm = resolveProposalLlmProvider(env);
+    const producer = createInlineOpportunityPipelineProducer({
+      env,
+      opportunities,
+      proposals,
+      runs,
+      settings,
+      userProfiles,
+      llm,
+    });
+    const run = await runs.create({
+      type: QueueNames.OPPORTUNITY_FETCH,
+      status: "QUEUED",
+      metadata: {
+        source: "worker.cli-sourcing",
+        action,
+      },
+    });
+
+    await processOpportunityFetchJob(
+      {
+        runId: run.id,
+        action,
+      },
+      {
+        env,
+        opportunities,
+        proposals,
+        runs,
+        settings,
+        userProfiles,
+        llm,
+        producer,
+      },
+    );
+
+    console.log(
+      JSON.stringify(
+        {
+          service: "worker",
+          command,
+          status: "sourcing-complete",
+          runId: run.id,
+          action,
+        },
+        null,
+        2,
+      ),
+    );
+
+    return;
+  }
+
   if (command === "proposal:prefill") {
     if (env.BROWSER_AUTOMATION_RUNTIME !== "python-playwright") {
       assertWorkerControlledBrowserMode(env.BROWSER_SESSION_MODE, command);
@@ -376,6 +459,20 @@ async function main() {
       2,
     ),
   );
+}
+
+function resolveProposalLlmProvider(env: ReturnType<typeof loadWorkerEnv>): ProposalLlmProvider {
+  if (env.LLM_PROVIDER === "openai" && env.OPENAI_API_KEY) {
+    return createProposalLlmProvider({
+      provider: "openai",
+      openAiApiKey: env.OPENAI_API_KEY,
+      openAiModel: env.OPENAI_MODEL,
+      temperature: env.LLM_TEMPERATURE,
+      maxOutputTokens: env.LLM_MAX_TOKENS,
+    });
+  }
+
+  return createLocalTemplateProposalProvider();
 }
 
 function assertWorkerControlledBrowserMode(

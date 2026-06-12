@@ -69,8 +69,13 @@ export async function registerWorkers(env: WorkerEnv): Promise<WorkerHandle> {
       QueueNames.OPPORTUNITY_FETCH,
       async (job) => {
         await processOpportunityFetchJob(job.data, {
+          env,
           opportunities,
+          proposals,
           runs,
+          settings,
+          userProfiles,
+          llm,
           producer,
         });
       },
@@ -80,6 +85,7 @@ export async function registerWorkers(env: WorkerEnv): Promise<WorkerHandle> {
       QueueNames.OPPORTUNITY_PARSE,
       async (job) => {
         await processOpportunityParseJob(job.data, {
+          env,
           opportunities,
           runs,
           producer,

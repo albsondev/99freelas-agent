@@ -17,9 +17,11 @@ As sete primeiras entregas agora cobrem a base do monorepo, a persistencia, a AP
 - plugin admin do Supabase para a API
 - rotas iniciais de `health`, `opportunities`, `proposals`, `settings` e `jobs`
 - importacao manual de URL com deduplicacao e auditoria em `automation_runs`
+- estrategia de sourcing registrada: primeiro notificacoes recomendadas, depois caca ativa em `/projects`
+- comandos diretos de sourcing sem Redis para `source:recommended`, `source:hunt` e `source:smart`
 - produtor BullMQ compartilhado com Redis
-- worker com processors mockados para `email.poll`, `opportunity.fetch`, `opportunity.parse`, `opportunity.score`, `proposal.submit` e `notification.send`
-- encadeamento real de jobs para mover uma oportunidade de `NEW` ate `QUALIFIED` no modo mockado da Fase 3
+- worker com processors reais para `opportunity.fetch`, `opportunity.parse`, `opportunity.score` e `proposal.generate`, com base inicial para `email.poll`, `proposal.submit` e `notification.send`
+- encadeamento real para mover uma oportunidade de `NEW` ate proposta gerada, com sourcing por listagem e parse real da pagina publica
 - normalizadores puros para moeda, prazo, skills, sanitizacao e sinais de risco
 - `OpportunityScoringService`, `PricingService`, `DeadlineService`, `ComplianceValidatorService` e `DecisionEngineService`
 - testes unitarios para o nucleo de regras no pacote `core`
@@ -45,10 +47,13 @@ As sete primeiras entregas agora cobrem a base do monorepo, a persistencia, a AP
 - captura de screenshots antes e depois do preenchimento final para auditoria local
 - guardrails centrais para envio real: score minimo, compliance aprovado, limites por hora/dia, modo `AUTOPILOT`, flag de ambiente e confirmacao explicita de CLI
 - runtime alternativo `Python + Playwright` para deixar a automacao rodando em navegador dedicado, separado do Chrome pessoal
+- coleta real da listagem de notificacoes e da listagem publica de projetos via `Python + Playwright`
+- scraper real da pagina publica do projeto para preencher titulo, descricao, categoria, contagem de propostas e interessados antes do score
+- score atualizado para refletir melhor o perfil aceito do freelancer, incluindo sites para advocacia, educacionais, landing pages e correcoes em stacks web aceitas
 
 ## Limites desta fase
 
-O repositorio ainda nao executa o scraper real da oportunidade nem a submissao final do formulario no 99Freelas.
+O repositorio ja executa a coleta real das listagens e o scraping real da pagina publica da oportunidade, mas ainda existem limites importantes.
 
 Nesta fase, o submit roda em modo seguro: ele preenche, revalida, coleta warnings, confere se o botao final esta habilitado e registra screenshots, mas nao clica em `Enviar proposta`.
 
@@ -74,6 +79,8 @@ Para operacao mais segura no dia a dia, a configuracao padrao agora favorece `BR
 Quando o login no 99Freelas depender melhor do seu ambiente real do Chrome, tambem existe o modo `shared-profile`, mas ele deve ser tratado como apoio ao fluxo manual/observado no Chrome real, nao como automacao controlada garantida pelo worker.
 
 Tambem deixei a base configurada com `AUTOMATION_MODE="REVIEW_REQUIRED"` por padrao. A ideia aqui e comecar com um pipeline auditavel e seguro antes de habilitar qualquer submissao real. Isso protege sua conta, reputacao e evita automacoes ruins logo no inicio.
+
+Outro limite importante: os valores medios e duracoes medias das propostas dependem da pagina autenticada de envio da proposta. A pagina publica do projeto nao exibe esses valores de forma aberta, entao o sistema combina a leitura da pagina publica para triagem com a leitura da pagina autenticada para decidir preco e prazo finais.
 
 No Supabase, configurei `auto_expose_new_tables = false` em `supabase/config.toml`. Essa escolha acompanha a direcao mais recente da plataforma e evita expor tabelas novas sem `GRANT` explicito.
 
@@ -126,6 +133,10 @@ pnpm auth:99freelas
 pnpm proposal:prefill
 pnpm proposal:observe
 pnpm proposal:submit
+pnpm source:recommended
+pnpm source:hunt
+pnpm source:smart
+pnpm session:shutdown
 ```
 
 ## Runtime Python
@@ -175,7 +186,7 @@ python3 -m pip install -r apps/browser-runner/requirements.txt
 python3 -m playwright install chromium
 ```
 
-Suba o Redis local:
+Suba o Redis local apenas se voce quiser operar o worker BullMQ continuo em `pnpm dev:worker`:
 
 ```bash
 docker compose up -d redis
@@ -247,37 +258,84 @@ pnpm session:check
 
 ### 4. Operacao do dia a dia
 
-Para observar a IA preenchendo sem enviar:
+Fluxo mais simples para usar o sistema do inicio ao fim:
+
+1. Autentique a sessao dedicada:
+
+```bash
+pnpm auth:99freelas
+```
+
+2. Confirme que a sessao ficou valida:
+
+```bash
+pnpm session:check
+```
+
+3. Rode a captacao automatica pelo caminho mais inteligente:
+
+```bash
+pnpm source:smart
+```
+
+Esse comando faz:
+
+- primeiro varre `https://www.99freelas.com.br/project-notifications/view?limit=20`
+- depois, se nao houver novidade relevante, cai para `https://www.99freelas.com.br/projects`
+- salva novas oportunidades no Supabase
+- faz parse real da pagina do projeto
+- aplica score, risco e compatibilidade
+- gera proposta apenas para o que nao for rejeitado pelos guardrails
+
+4. Se quiser forcar apenas notificacoes:
+
+```bash
+pnpm source:recommended
+```
+
+5. Se quiser forcar apenas a caca ativa na listagem publica:
+
+```bash
+pnpm source:hunt
+```
+
+6. Observe uma proposta sem enviar:
 
 ```bash
 pnpm proposal:observe
 ```
 
-Para preencher uma proposta especifica sem enviar:
+7. Preencha uma proposta especifica sem clique real:
 
 ```bash
 pnpm proposal:prefill -- --proposal-id <id>
 ```
 
-Para testar o fluxo completo em modo seguro, sem clique real:
+8. Teste o envio em modo seguro:
 
 ```bash
 pnpm proposal:submit -- --proposal-id <id>
 ```
 
-Para observar o fluxo completo com navegador visivel:
-
-```bash
-pnpm proposal:submit -- --proposal-id <id> --observe --step-delay-ms 2000 --hold-ms 15000
-```
-
-Para envio real, somente quando voce decidir habilitar conscientemente:
+9. Quando decidir liberar envio real de forma consciente:
 
 ```bash
 pnpm proposal:submit -- --proposal-id <id> --live --confirm-live-submit --observe
 ```
 
-Antes disso, confirme que o `.env.local` esta com:
+10. Encerre a sessao dedicada quando terminar:
+
+```bash
+pnpm session:shutdown
+```
+
+Como descobrir os IDs:
+
+- suba a API com `pnpm dev:api` e consulte as rotas de oportunidades/propostas
+- ou confira direto no Supabase
+- ou use o dashboard quando a parte visual estiver em uso no seu fluxo
+
+Antes do envio real, confirme que o `.env.local` esta com:
 
 ```bash
 AUTOMATION_MODE="AUTOPILOT"
@@ -313,6 +371,40 @@ Com a Fase 8 praticamente fechada, os proximos passos ficam assim:
 - validar um envio live controlado com proposta de baixo risco e conta monitorada
 - registrar o resultado final no bucket/auditoria do Supabase
 - decidir quando habilitar o job automatico de submit fora do modo manual
+
+## Regra de sourcing
+
+O sistema agora deve considerar esta ordem de busca de oportunidades:
+
+- primeiro abrir as notificacoes recomendadas do 99Freelas em `https://www.99freelas.com.br/project-notifications/view?limit=20`
+- validar uma a uma as oportunidades recomendadas com base no perfil tecnico/comercial do freelancer
+- somente quando nao houver novas oportunidades relevantes nessa fila, partir para a caca ativa em `https://www.99freelas.com.br/projects`
+- na caca ativa, percorrer a listagem sequencialmente e filtrar os projetos pelo titulo, descricao, stack, risco e aderencia ao perfil
+
+Rotas internas ja preparadas:
+
+- `POST /jobs/source-recommended`
+- `POST /jobs/hunt-projects`
+- `POST /jobs/process-pending`
+
+## Caminho recomendado hoje
+
+Se voce quiser operar sem complicacao, use este roteiro:
+
+```bash
+pnpm auth:99freelas
+pnpm session:check
+pnpm source:smart
+pnpm proposal:observe
+pnpm proposal:submit -- --proposal-id <id>
+pnpm session:shutdown
+```
+
+Notas praticas:
+
+- para captacao manual assistida, `source:smart` e o melhor ponto de partida
+- para automacao continua com fila, API e worker persistente, ai sim vale subir Redis e usar `pnpm dev:worker`
+- hoje o caminho mais simples e robusto e deixar a sessao dedicada Python ativa e disparar os comandos do worker sob demanda
 
 ## Observacao ao vivo
 

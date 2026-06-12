@@ -56,6 +56,41 @@ const POSITIVE_SKILLS: Array<{ skill: string; weight: number }> = [
   { skill: "Landing Pages", weight: 4 },
 ];
 
+const PREFERRED_SCOPE_RULES: Array<{
+  patterns: RegExp[];
+  weight: number;
+  reason: string;
+}> = [
+  {
+    patterns: [/\bsite\b/i, /\b(?:advogad|advocacia|jur[ií]dic)\w*\b/i],
+    weight: 40,
+    reason: "Projeto de site para advocacia entra no perfil aceito.",
+  },
+  {
+    patterns: [/\bsite\b/i, /\b(?:educacional|escola|curso|professor|ensino)\b/i],
+    weight: 36,
+    reason: "Projeto de site educacional entra no perfil aceito.",
+  },
+  {
+    patterns: [/\blanding page\b/i],
+    weight: 34,
+    reason: "Landing pages entram no perfil aceito.",
+  },
+  {
+    patterns: [/\bsite\b/i, /\b(?:pessoal|institucional|marca pessoal|portf[oó]lio)\b/i],
+    weight: 30,
+    reason: "Sites pessoais e institucionais entram no perfil aceito.",
+  },
+  {
+    patterns: [
+      /\b(?:bug|ajuste|corre(?:ç|c)(?:a|ã)o|erro|manuten(?:ç|c)(?:a|ã)o)\b/i,
+      /\b(?:javascript|typescript|react|next(?:\.js)?|vue(?:\.js)?|php|wordpress|node(?:\.js)?)\b/i,
+    ],
+    weight: 26,
+    reason: "Correção de bugs em stacks aceitas entra no perfil.",
+  },
+];
+
 const NEGATIVE_RULES: Array<{
   patterns: RegExp[];
   penalty: number;
@@ -144,6 +179,9 @@ export class OpportunityScoringService {
     const matchedSkills = POSITIVE_SKILLS.filter(({ skill }) =>
       normalizedSkills.includes(skill),
     ).map(({ skill }) => skill);
+    const matchedPreferredScopes = PREFERRED_SCOPE_RULES.filter((rule) =>
+      rule.patterns.every((pattern) => pattern.test(source)),
+    );
 
     for (const { skill, weight } of POSITIVE_SKILLS) {
       if (matchedSkills.includes(skill)) {
@@ -151,13 +189,30 @@ export class OpportunityScoringService {
       }
     }
 
+    for (const rule of matchedPreferredScopes) {
+      score += rule.weight;
+      reasons.push(rule.reason);
+    }
+
     if (matchedSkills.length > 0) {
       reasons.push(`Compatibilidade técnica detectada: ${matchedSkills.join(", ")}.`);
+    }
+
+    if (
+      matchedPreferredScopes.length > 0 &&
+      /\bdesenvolvimento web\b/i.test(source)
+    ) {
+      score += 10;
+      reasons.push("Categoria de desenvolvimento web reforça aderência ao perfil.");
     }
 
     if (input.description.trim().length >= 180) {
       score += 8;
       reasons.push("Descrição com escopo minimamente explicada.");
+    } else if (matchedPreferredScopes.length > 0) {
+      score -= 3;
+      riskFlags.push("UNCLEAR_SCOPE");
+      reasons.push("Descrição curta, mas em um tipo de projeto que faz parte do perfil aceito.");
     } else {
       score -= 12;
       riskFlags.push("UNCLEAR_SCOPE");

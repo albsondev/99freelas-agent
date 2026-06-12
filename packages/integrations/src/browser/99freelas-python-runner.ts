@@ -7,6 +7,14 @@ import { fileURLToPath } from "node:url";
 
 import type { BrowserSessionResult } from "./99freelas-auth.js";
 import type {
+  Collect99FreelasProjectListingsResult,
+  ProjectListingSourceKind,
+} from "./99freelas-project-list.js";
+import type {
+  Scrape99FreelasProjectPageInput,
+  Scrape99FreelasProjectPageResult,
+} from "./99freelas-project-page.js";
+import type {
   Prefill99FreelasProposalInput,
   Prefill99FreelasProposalResult,
 } from "./99freelas-proposal-form.js";
@@ -55,10 +63,21 @@ type PythonRunnerSubmitInput = PythonRunnerBaseInput &
     | "chromeProfileDirectory"
   >;
 
+export type Collect99FreelasProjectListingsInput = PythonRunnerBaseInput & {
+  limit?: number;
+  listingUrl: string;
+  sourceKind: ProjectListingSourceKind;
+};
+
+export type Scrape99FreelasProjectPageViaPythonInput = PythonRunnerBaseInput &
+  Scrape99FreelasProjectPageInput;
+
 type DaemonCommandName =
   | "health"
   | "auth"
   | "session-check"
+  | "project-list-collect"
+  | "project-page-scrape"
   | "proposal-prefill"
   | "proposal-submit"
   | "shutdown";
@@ -100,6 +119,28 @@ export async function prefill99FreelasProposalFormViaPython(
   await ensurePythonRunnerDaemon(input);
   return sendDaemonCommand<Prefill99FreelasProposalResult>(
     "proposal-prefill",
+    input,
+    input.timeoutMs ?? 60_000,
+  );
+}
+
+export async function collect99FreelasProjectListingsViaPython(
+  input: Collect99FreelasProjectListingsInput,
+): Promise<Collect99FreelasProjectListingsResult> {
+  await ensurePythonRunnerDaemon(input);
+  return sendDaemonCommand<Collect99FreelasProjectListingsResult>(
+    "project-list-collect",
+    input,
+    input.timeoutMs ?? 60_000,
+  );
+}
+
+export async function scrape99FreelasProjectPageViaPython(
+  input: Scrape99FreelasProjectPageViaPythonInput,
+): Promise<Scrape99FreelasProjectPageResult> {
+  await ensurePythonRunnerDaemon(input);
+  return sendDaemonCommand<Scrape99FreelasProjectPageResult>(
+    "project-page-scrape",
     input,
     input.timeoutMs ?? 60_000,
   );

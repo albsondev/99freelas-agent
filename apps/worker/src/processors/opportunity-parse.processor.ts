@@ -1,19 +1,24 @@
 import {
   QueueNames,
+  extractBudgetRangeBRL,
   extractSkills,
+  normalizeCurrencyBRL,
   type JsonValue,
   type OpportunityParseJobPayload,
 } from "@99freelas/core";
-import type {
-  AutomationRunRepository,
-  OpportunityRepository,
-  QueueProducer,
+import {
+  scrape99FreelasProjectPageViaPython,
+  type AutomationRunRepository,
+  type OpportunityRepository,
 } from "@99freelas/integrations";
+import type { WorkerEnv } from "../env.js";
+import type { ProcessorProducer } from "./processor-producer.js";
 
 type ProcessOpportunityParseContext = {
+  env: WorkerEnv;
   opportunities: OpportunityRepository;
   runs: AutomationRunRepository;
-  producer: QueueProducer;
+  producer: ProcessorProducer;
 };
 
 function asJsonObject(value: JsonValue): Record<string, JsonValue> {
@@ -22,6 +27,20 @@ function asJsonObject(value: JsonValue): Record<string, JsonValue> {
   }
 
   return {};
+}
+
+function parseInteger(value: string | null | undefined): number | null {
+  if (!value) {
+    return null;
+  }
+
+  const digits = value.replace(/[^\d]/g, "");
+  if (!digits) {
+    return null;
+  }
+
+  const parsed = Number(digits);
+  return Number.isFinite(parsed) ? parsed : null;
 }
 
 export async function processOpportunityParseJob(
@@ -50,21 +69,81 @@ export async function processOpportunityParseJob(
   const fallbackDescription =
     opportunity.description ??
     "Descricao ainda nao extraida do HTML real. Pipeline em modo mockado na Fase 3.";
+
+  let scrapedProject:
+    | Awaited<ReturnType<typeof scrape99FreelasProjectPageViaPython>>
+    | null = null;
+  let parserName = "python-project-page-v1";
+  let parseWarning: string | null = null;
+
+  try {
+    scrapedProject = await scrape99FreelasProjectPageViaPython({
+      browserName: context.env.PYTHON_BROWSER_NAME,
+      headless: true,
+      profileDir: context.env.PYTHON_BROWSER_PROFILE_DIR,
+      projectUrl: opportunity.url,
+      pythonExecutable: context.env.PYTHON_EXECUTABLE,
+      screenshotDir: context.env.BROWSER_SCREENSHOT_DIR,
+      storageStatePath: context.env.PYTHON_BROWSER_STORAGE_STATE_PATH,
+      timeoutMs: 45_000,
+    });
+  } catch (error) {
+    parserName = "mock-fallback-phase-3";
+    parseWarning =
+      error instanceof Error ? error.message : "Unknown project page scraping error";
+  }
+
+  const parsedTitle = scrapedProject?.title?.trim() || fallbackTitle;
+  const parsedDescription =
+    scrapedProject?.description?.trim() || fallbackDescription;
+  const parsedCategory = [
+    scrapedProject?.category?.trim() ?? null,
+    scrapedProject?.subcategory?.trim() ?? null,
+  ]
+    .filter((value): value is string => Boolean(value))
+    .join(" / ");
+  const budgetRange = extractBudgetRangeBRL(scrapedProject?.budgetText ?? "");
   const detectedSkills = extractSkills(
-    [fallbackTitle, fallbackDescription, opportunity.category ?? ""].join(" "),
+    [parsedTitle, parsedDescription, parsedCategory || (opportunity.category ?? "")].join(" "),
   );
+  const mergedSkills = [
+    ...new Set([
+      ...opportunity.skills,
+      ...(scrapedProject?.skills ?? []),
+      ...detectedSkills,
+    ]),
+  ];
 
   await context.opportunities.update(payload.opportunityId, {
-    title: fallbackTitle,
-    description: fallbackDescription,
-    skills: opportunity.skills.length > 0 ? opportunity.skills : detectedSkills,
+    title: parsedTitle,
+    description: parsedDescription,
+    category: parsedCategory || opportunity.category || null,
+    budget_text: scrapedProject?.budgetText ?? opportunity.budgetText ?? null,
+    budget_min: budgetRange.min ?? opportunity.budgetMin ?? null,
+    budget_max: budgetRange.max ?? opportunity.budgetMax ?? null,
+    proposal_count:
+      parseInteger(scrapedProject?.proposalCountText) ?? opportunity.proposalCount ?? null,
+    interested_count:
+      parseInteger(scrapedProject?.interestedCountText) ??
+      opportunity.interestedCount ??
+      null,
+    skills: mergedSkills,
     status: "PARSED",
     raw_payload: {
       ...asJsonObject(opportunity.rawPayload),
       parse: {
         parsedAt: new Date().toISOString(),
-        parser: "mock-phase-3",
+        parser: parserName,
         detectedSkills,
+        ...(parseWarning ? { parseWarning } : {}),
+        ...(scrapedProject
+          ? {
+              publicProject: scrapedProject,
+              minimumOfferAmount: normalizeCurrencyBRL(
+                scrapedProject.minimumOfferText ?? "",
+              ),
+            }
+          : {}),
       },
     },
   });

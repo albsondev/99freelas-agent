@@ -25,6 +25,8 @@ except ModuleNotFoundError as exc:  # pragma: no cover - depends on machine setu
 
 LOGIN_URL = "https://www.99freelas.com.br/login"
 DASHBOARD_URL = "https://www.99freelas.com.br/dashboard"
+PROJECT_NOTIFICATIONS_URL = "https://www.99freelas.com.br/project-notifications/view?limit=20"
+PROJECT_LIST_URL = "https://www.99freelas.com.br/projects"
 AUTH_TEXT_HINTS = ["Freelancer", "Projetos", "Conta"]
 SUCCESS_TEXT_HINTS = [
     "Sua proposta foi enviada com sucesso",
@@ -49,6 +51,10 @@ async def main() -> None:
         result = await authenticate_direct(payload)
     elif args.command == "session-check":
         result = await session_check_direct(payload)
+    elif args.command == "project-list-collect":
+        result = await project_list_collect_direct(payload)
+    elif args.command == "project-page-scrape":
+        result = await project_page_scrape_direct(payload)
     elif args.command == "proposal-prefill":
         result = await proposal_prefill_direct(payload)
     elif args.command == "proposal-submit":
@@ -63,7 +69,15 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "command",
-        choices=["auth", "session-check", "proposal-prefill", "proposal-submit", "serve"],
+        choices=[
+            "auth",
+            "session-check",
+            "project-list-collect",
+            "project-page-scrape",
+            "proposal-prefill",
+            "proposal-submit",
+            "serve",
+        ],
     )
     parser.add_argument("--input", required=True)
     parser.add_argument("--output", required=True)
@@ -150,6 +164,8 @@ class PythonRunnerDaemon:
             "health": self.health,
             "auth": self.authenticate,
             "session-check": self.session_check,
+            "project-list-collect": self.project_list_collect,
+            "project-page-scrape": self.project_page_scrape,
             "proposal-prefill": self.proposal_prefill,
             "proposal-submit": self.proposal_submit,
             "shutdown": self.shutdown,
@@ -228,6 +244,20 @@ class PythonRunnerDaemon:
         finally:
             await page.close()
 
+    async def project_list_collect(self, payload: dict[str, Any]) -> dict[str, Any]:
+        page = await self._new_page()
+        try:
+            return await collect_project_listing_core(page, payload)
+        finally:
+            await page.close()
+
+    async def project_page_scrape(self, payload: dict[str, Any]) -> dict[str, Any]:
+        page = await self._new_page()
+        try:
+            return await scrape_project_page_core(page, payload)
+        finally:
+            await page.close()
+
     async def proposal_submit(self, payload: dict[str, Any]) -> dict[str, Any]:
         page = await self._new_page()
         try:
@@ -244,7 +274,7 @@ class PythonRunnerDaemon:
         if self.bootstrap_page and not self.bootstrap_page.is_closed():
             return self.bootstrap_page
 
-        self.bootstrap_page = await self._new_page()
+        self.bootstrap_page = await get_or_create_context_page(self._require_context())
         return self.bootstrap_page
 
     async def _new_page(self) -> Page:
@@ -269,7 +299,7 @@ async def authenticate_direct(payload: dict[str, Any]) -> dict[str, Any]:
     async with async_playwright() as playwright:
         context = await launch_persistent_context(playwright, payload, headless=False)
         try:
-            page = await context.new_page()
+            page = await get_or_create_context_page(context)
             return await authenticate_with_context(context, page, payload)
         finally:
             await context.close()
@@ -283,7 +313,7 @@ async def session_check_direct(payload: dict[str, Any]) -> dict[str, Any]:
             headless=bool(payload.get("headless", True)),
         )
         try:
-            page = await context.new_page()
+            page = await get_or_create_context_page(context)
             await page.goto(DASHBOARD_URL, wait_until="domcontentloaded", timeout=payload_timeout(payload))
             return await inspect_session(context, page, payload)
         finally:
@@ -298,8 +328,36 @@ async def proposal_prefill_direct(payload: dict[str, Any]) -> dict[str, Any]:
             headless=bool(payload.get("headless", False)),
         )
         try:
-            page = await context.new_page()
+            page = await get_or_create_context_page(context)
             return await proposal_prefill_core(context, page, payload)
+        finally:
+            await context.close()
+
+
+async def project_list_collect_direct(payload: dict[str, Any]) -> dict[str, Any]:
+    async with async_playwright() as playwright:
+        context = await launch_persistent_context(
+            playwright,
+            payload,
+            headless=bool(payload.get("headless", False)),
+        )
+        try:
+            page = await get_or_create_context_page(context)
+            return await collect_project_listing_core(page, payload)
+        finally:
+            await context.close()
+
+
+async def project_page_scrape_direct(payload: dict[str, Any]) -> dict[str, Any]:
+    async with async_playwright() as playwright:
+        context = await launch_persistent_context(
+            playwright,
+            payload,
+            headless=bool(payload.get("headless", False)),
+        )
+        try:
+            page = await get_or_create_context_page(context)
+            return await scrape_project_page_core(page, payload)
         finally:
             await context.close()
 
@@ -312,7 +370,7 @@ async def proposal_submit_direct(payload: dict[str, Any]) -> dict[str, Any]:
             headless=bool(payload.get("headless", False)),
         )
         try:
-            page = await context.new_page()
+            page = await get_or_create_context_page(context)
             return await proposal_submit_core(context, page, payload)
         finally:
             await context.close()
@@ -380,6 +438,16 @@ async def launch_persistent_context(
         launch_args["args"] = ["--disable-blink-features=AutomationControlled"]
 
     return await browser_type.launch_persistent_context(**launch_args)
+
+
+async def get_or_create_context_page(context: BrowserContext) -> Page:
+    for page in context.pages:
+        if page.is_closed():
+            continue
+        if page.url in ("", "about:blank"):
+            return page
+
+    return await context.new_page()
 
 
 async def inspect_session(
@@ -501,6 +569,136 @@ async def proposal_submit_core(
     }
 
 
+async def collect_project_listing_core(page: Page, payload: dict[str, Any]) -> dict[str, Any]:
+    listing_url = str(payload.get("listingUrl") or PROJECT_NOTIFICATIONS_URL)
+    source_kind = str(payload.get("sourceKind") or "recommended-notifications")
+    limit = max(1, int(payload.get("limit", 20)))
+
+    await page.goto(
+        listing_url,
+        wait_until="domcontentloaded",
+        timeout=payload_timeout(payload),
+    )
+    await page.wait_for_timeout(1500)
+
+    items = await page.evaluate(
+        """(limit) => {
+          const anchors = Array.from(document.querySelectorAll('a[href*="/project/"]'));
+          const seen = new Set();
+          const items = [];
+
+          for (const anchor of anchors) {
+            const href = anchor.getAttribute('href') || '';
+            if (!href || href.includes('/project/bid/') || href.includes('/project/message/')) {
+              continue;
+            }
+
+            const absoluteUrl = new URL(href, window.location.origin).toString().split('#')[0].split('?')[0];
+            if (
+              !absoluteUrl.includes('/project/') ||
+              absoluteUrl.endsWith('/project/new') ||
+              seen.has(absoluteUrl)
+            ) {
+              continue;
+            }
+
+            const title = (anchor.textContent || '').replace(/\\s+/g, ' ').trim();
+            if (!title) {
+              continue;
+            }
+
+            seen.add(absoluteUrl);
+            items.push({ url: absoluteUrl, title });
+
+            if (items.length >= limit) {
+              break;
+            }
+          }
+
+          return items;
+        }""",
+        limit,
+    )
+
+    return {
+        "currentUrl": page.url,
+        "items": items,
+        "listingUrl": listing_url,
+        "sourceKind": source_kind,
+    }
+
+
+async def scrape_project_page_core(page: Page, payload: dict[str, Any]) -> dict[str, Any]:
+    project_url = str(payload.get("projectUrl") or "")
+    if not project_url:
+        raise RuntimeError("projectUrl is required for project-page-scrape.")
+
+    public_project_url = build_public_project_url(project_url)
+
+    await page.goto(
+        public_project_url,
+        wait_until="domcontentloaded",
+        timeout=payload_timeout(payload),
+    )
+    await page.wait_for_timeout(1000)
+
+    data = await page.evaluate(
+        """(projectUrl) => {
+          const normalize = (value) => (value || '').replace(/\\s+/g, ' ').trim();
+          const findMeta = (selector) => {
+            const element = document.querySelector(selector);
+            const content = element?.getAttribute('content') || '';
+            return normalize(content) || null;
+          };
+
+          const title =
+            normalize(document.querySelector('.nomeProjeto')?.textContent) ||
+            findMeta('meta[property="og:title"]') ||
+            null;
+          const description =
+            normalize(document.querySelector('.project-description')?.textContent) ||
+            findMeta('meta[name="description"]') ||
+            null;
+
+          const info = {};
+          for (const row of Array.from(document.querySelectorAll('.info-adicionais table tr'))) {
+            const label = normalize(row.querySelector('th')?.textContent).replace(/:$/, '');
+            const value = normalize(row.querySelector('td')?.textContent);
+            if (label) {
+              info[label] = value || null;
+            }
+          }
+
+          const rawSkills = Array.from(
+            document.querySelectorAll(
+              '.project-skills a, .habilidades a, .abilities a, a[href*="ability"]',
+            ),
+          )
+            .map((node) => normalize(node.textContent))
+            .filter(Boolean);
+
+          const skills = Array.from(new Set(rawSkills));
+
+          return {
+            currentUrl: window.location.href,
+            projectUrl,
+            title,
+            description,
+            category: info['Categoria'] || null,
+            subcategory: info['Subcategoria'] || null,
+            budgetText: info['Orçamento'] || null,
+            proposalCountText: info['Propostas'] || null,
+            interestedCountText: info['Interessados'] || null,
+            minimumOfferText: info['Valor Mínimo'] || null,
+            skills,
+          };
+        }""",
+        public_project_url,
+    )
+
+    return data
+
+
 async def open_and_fill_proposal(page: Page, payload: dict[str, Any]) -> None:
     await page.goto(
         build_proposal_page_url(payload["proposalPageUrl"]),
@@ -586,6 +784,10 @@ def build_proposal_page_url(project_url: str) -> str:
     if "/project/bid/" in project_url:
         return project_url
     return project_url.replace("/project/", "/project/bid/")
+
+
+def build_public_project_url(project_url: str) -> str:
+    return project_url.replace("/project/bid/", "/project/").split("#")[0].split("?")[0]
 
 
 def format_money_input(amount: Any) -> str:
