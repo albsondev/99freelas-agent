@@ -19,6 +19,18 @@ export function parse99FreelasProposalPage(snapshot: string): ProposalPageSnapsh
     /Esta proposta requer\s+\d+\s+conex(?:ão|ões).*?você ter[áa]\s+\d+\s+conex(?:ão|ões)\s+restantes/i,
   );
 
+  const hasOfferField =
+    snapshot.includes('textbox "Sua oferta"') || snapshot.includes("Sua oferta");
+  const hasDetailsField =
+    snapshot.includes('textbox "Detalhes"') || snapshot.includes("Detalhes");
+  const hasProposalAction =
+    snapshot.includes('heading "Enviar proposta"') ||
+    snapshot.includes('button "Enviar proposta"') ||
+    snapshot.includes('heading "Melhorar proposta"') ||
+    snapshot.includes('button "Melhorar proposta"') ||
+    snapshot.includes("Enviar proposta") ||
+    snapshot.includes("Melhorar proposta");
+
   return {
     averageBidAmount: averageBidLine ? normalizeCurrencyBRL(averageBidLine) : null,
     averageDeadlineDays: averageDeadlineLine
@@ -33,12 +45,10 @@ export function parse99FreelasProposalPage(snapshot: string): ProposalPageSnapsh
       connectionsLine,
       /Esta proposta requer\s+(\d+)\s+conex(?:ão|ões)/i,
     ),
-    hasProposalForm:
-      snapshot.includes('heading "Enviar proposta"') &&
-      snapshot.includes('textbox "Sua oferta"') &&
-      snapshot.includes('textbox "Detalhes"'),
+    hasProposalForm: hasProposalAction && hasOfferField && hasDetailsField,
     hasQuestionChannel:
       snapshot.includes('link "Fazer pergunta"') ||
+      snapshot.includes("Fazer pergunta") ||
       snapshot.includes("/project/message/"),
   };
 }

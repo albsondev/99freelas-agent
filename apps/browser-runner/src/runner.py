@@ -3,10 +3,11 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import os
 import re
 import sys
 from pathlib import Path
-from typing import Any
+from typing import Any, Awaitable, Callable
 
 try:
     from playwright.async_api import BrowserContext, Page, async_playwright
@@ -15,7 +16,7 @@ except ModuleNotFoundError as exc:  # pragma: no cover - depends on machine setu
         (
             "O pacote Python 'playwright' nao esta instalado. "
             "Rode 'python3 -m pip install -r apps/browser-runner/requirements.txt' "
-            "e depois 'python3 -m playwright install firefox'."
+            "e depois 'python3 -m playwright install chromium'."
         ),
         file=sys.stderr,
     )
@@ -32,94 +33,255 @@ SUCCESS_TEXT_HINTS = [
 ]
 AUTH_BOOTSTRAP_TIMEOUT_MS = 15 * 60 * 1000
 AUTH_BOOTSTRAP_POLL_INTERVAL_MS = 2000
+DEFAULT_DAEMON_HOST = "127.0.0.1"
+DEFAULT_DAEMON_PORT = 44731
 
 
 async def main() -> None:
     args = parse_args()
     payload = json.loads(Path(args.input).read_text(encoding="utf-8"))
 
+    if args.command == "serve":
+        await run_daemon_server(payload, args.output)
+        return
+
     if args.command == "auth":
-        result = await authenticate(payload)
+        result = await authenticate_direct(payload)
     elif args.command == "session-check":
-        result = await session_check(payload)
+        result = await session_check_direct(payload)
     elif args.command == "proposal-prefill":
-        result = await proposal_prefill(payload)
+        result = await proposal_prefill_direct(payload)
     elif args.command == "proposal-submit":
-        result = await proposal_submit(payload)
+        result = await proposal_submit_direct(payload)
     else:  # pragma: no cover
         raise RuntimeError(f"Unsupported command: {args.command}")
 
-    output_path = Path(args.output)
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    output_path.write_text(json.dumps(result, ensure_ascii=True, indent=2), encoding="utf-8")
+    write_output(args.output, result)
 
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "command",
-        choices=["auth", "session-check", "proposal-prefill", "proposal-submit"],
+        choices=["auth", "session-check", "proposal-prefill", "proposal-submit", "serve"],
     )
     parser.add_argument("--input", required=True)
     parser.add_argument("--output", required=True)
     return parser.parse_args()
 
 
-async def authenticate(payload: dict[str, Any]) -> dict[str, Any]:
+class PythonRunnerDaemon:
+    def __init__(self, payload: dict[str, Any]) -> None:
+        self.payload = payload
+        self.playwright: Any | None = None
+        self.context: BrowserContext | None = None
+        self.server: asyncio.AbstractServer | None = None
+        self.bootstrap_page: Page | None = None
+        self._shutdown_event = asyncio.Event()
+
+    async def start(self) -> None:
+        self.playwright = await async_playwright().start()
+        self.context = await launch_persistent_context(
+            self.playwright,
+            self.payload,
+            headless=bool(self.payload.get("headless", False)),
+        )
+
+    async def serve(self, output_path: str) -> None:
+        host = self.payload.get("daemonHost", DEFAULT_DAEMON_HOST)
+        port = int(self.payload.get("daemonPort", DEFAULT_DAEMON_PORT))
+        self.server = await asyncio.start_server(self.handle_client, host, port)
+
+        write_output(
+            output_path,
+            {
+                "status": "ready",
+                "host": host,
+                "port": port,
+                "pid": os.getpid(),
+            },
+        )
+
+        async with self.server:
+            await self._shutdown_event.wait()
+
+    async def stop(self) -> None:
+        if self.server is not None:
+            self.server.close()
+            await self.server.wait_closed()
+            self.server = None
+
+        if self.context is not None:
+            await self.context.close()
+            self.context = None
+
+        if self.playwright is not None:
+            await self.playwright.stop()
+            self.playwright = None
+
+    async def handle_client(
+        self,
+        reader: asyncio.StreamReader,
+        writer: asyncio.StreamWriter,
+    ) -> None:
+        try:
+            raw = await reader.readline()
+            if not raw:
+                return
+
+            request = json.loads(raw.decode("utf-8"))
+            response = await self.dispatch(request)
+        except Exception as exc:  # pragma: no cover - defensive path
+            response = {
+                "ok": False,
+                "error": str(exc),
+            }
+
+        writer.write((json.dumps(response, ensure_ascii=True) + "\n").encode("utf-8"))
+        await writer.drain()
+        writer.close()
+        await writer.wait_closed()
+
+    async def dispatch(self, request: dict[str, Any]) -> dict[str, Any]:
+        command = request.get("command")
+        payload = request.get("payload", self.payload)
+
+        handlers: dict[str, Callable[[dict[str, Any]], Awaitable[dict[str, Any]]]] = {
+            "health": self.health,
+            "auth": self.authenticate,
+            "session-check": self.session_check,
+            "proposal-prefill": self.proposal_prefill,
+            "proposal-submit": self.proposal_submit,
+            "shutdown": self.shutdown,
+        }
+
+        handler = handlers.get(command)
+        if handler is None:
+            raise RuntimeError(f"Unsupported daemon command: {command}")
+
+        result = await handler(payload)
+        return {
+            "ok": True,
+            "result": result,
+        }
+
+    async def health(self, payload: dict[str, Any]) -> dict[str, Any]:
+        page = await self._ensure_bootstrap_page(payload)
+        body_text = await safe_body_text(page)
+        return {
+            "status": "ready",
+            "authenticated": await is_authenticated(page, body_text),
+            "currentUrl": page.url,
+        }
+
+    async def authenticate(self, payload: dict[str, Any]) -> dict[str, Any]:
+        page = await self._ensure_bootstrap_page(payload)
+        await page.goto(LOGIN_URL, wait_until="domcontentloaded", timeout=payload_timeout(payload))
+
+        if await is_authenticated(page):
+            return await inspect_session(self._require_context(), page, payload)
+
+        print(
+            (
+                "Janela da automacao Python aberta. "
+                "Faça o login manual no 99Freelas nessa janela dedicada. "
+                "O daemon vai detectar a sessao autenticada e salvar automaticamente."
+            ),
+            flush=True,
+        )
+        deadline = asyncio.get_running_loop().time() + (
+            int(payload.get("authBootstrapTimeoutMs", AUTH_BOOTSTRAP_TIMEOUT_MS)) / 1000
+        )
+
+        while asyncio.get_running_loop().time() < deadline:
+            if page.is_closed():
+                raise RuntimeError("A janela da automacao foi fechada antes do login ser confirmado.")
+
+            try:
+                if await is_authenticated(page):
+                    result = await inspect_session(self._require_context(), page, payload)
+                    if result["isAuthenticated"]:
+                        return result
+                elif "/dashboard" in page.url:
+                    result = await inspect_session(self._require_context(), page, payload)
+                    if result["isAuthenticated"]:
+                        return result
+            except Exception:
+                pass
+
+            await asyncio.sleep(AUTH_BOOTSTRAP_POLL_INTERVAL_MS / 1000)
+
+        raise RuntimeError("Tempo esgotado aguardando autenticacao manual no navegador dedicado.")
+
+    async def session_check(self, payload: dict[str, Any]) -> dict[str, Any]:
+        page = await self._new_page()
+        try:
+            await page.goto(DASHBOARD_URL, wait_until="domcontentloaded", timeout=payload_timeout(payload))
+            return await inspect_session(self._require_context(), page, payload)
+        finally:
+            await page.close()
+
+    async def proposal_prefill(self, payload: dict[str, Any]) -> dict[str, Any]:
+        page = await self._new_page()
+        try:
+            return await proposal_prefill_core(self._require_context(), page, payload)
+        finally:
+            await page.close()
+
+    async def proposal_submit(self, payload: dict[str, Any]) -> dict[str, Any]:
+        page = await self._new_page()
+        try:
+            return await proposal_submit_core(self._require_context(), page, payload)
+        finally:
+            await page.close()
+
+    async def shutdown(self, payload: dict[str, Any]) -> dict[str, Any]:
+        self._shutdown_event.set()
+        asyncio.create_task(self.stop())
+        return {"status": "shutting-down"}
+
+    async def _ensure_bootstrap_page(self, payload: dict[str, Any]) -> Page:
+        if self.bootstrap_page and not self.bootstrap_page.is_closed():
+            return self.bootstrap_page
+
+        self.bootstrap_page = await self._new_page()
+        return self.bootstrap_page
+
+    async def _new_page(self) -> Page:
+        return await self._require_context().new_page()
+
+    def _require_context(self) -> BrowserContext:
+        if self.context is None:
+            raise RuntimeError("Daemon browser context is not initialized.")
+        return self.context
+
+
+async def run_daemon_server(payload: dict[str, Any], output_path: str) -> None:
+    daemon = PythonRunnerDaemon(payload)
+    await daemon.start()
+    try:
+        await daemon.serve(output_path)
+    finally:
+        await daemon.stop()
+
+
+async def authenticate_direct(payload: dict[str, Any]) -> dict[str, Any]:
     async with async_playwright() as playwright:
-        context = await launch_context(playwright, payload, headless=False)
+        context = await launch_persistent_context(playwright, payload, headless=False)
         try:
             page = await context.new_page()
-            await page.goto(LOGIN_URL, wait_until="domcontentloaded", timeout=payload_timeout(payload))
-
-            if await is_authenticated(page):
-                return await inspect_session(context, page, payload)
-
-            print(
-                (
-                    "Janela da automacao Python aberta. "
-                    "Faça o login manual no 99Freelas nessa janela dedicada. "
-                    "O runner vai detectar a sessao autenticada e salvar automaticamente, "
-                    "sem precisar pressionar Enter."
-                ),
-                flush=True,
-            )
-            deadline = asyncio.get_running_loop().time() + (
-                int(payload.get("authBootstrapTimeoutMs", AUTH_BOOTSTRAP_TIMEOUT_MS)) / 1000
-            )
-
-            while asyncio.get_running_loop().time() < deadline:
-                if page.is_closed():
-                    raise RuntimeError(
-                        "A janela da automacao foi fechada antes do login ser confirmado."
-                    )
-
-                try:
-                    if await is_authenticated(page):
-                        result = await inspect_session(context, page, payload)
-                        if result["isAuthenticated"]:
-                            return result
-                    elif "/dashboard" in page.url:
-                        result = await inspect_session(context, page, payload)
-                        if result["isAuthenticated"]:
-                            return result
-                except Exception:
-                    # Durante o login o navegador pode redirecionar ou trocar de estado.
-                    # Nesse caso, basta aguardar a proxima rodada do polling.
-                    pass
-
-                await asyncio.sleep(AUTH_BOOTSTRAP_POLL_INTERVAL_MS / 1000)
-
-            raise RuntimeError(
-                "Tempo esgotado aguardando autenticacao manual no navegador dedicado."
-            )
+            return await authenticate_with_context(context, page, payload)
         finally:
             await context.close()
 
 
-async def session_check(payload: dict[str, Any]) -> dict[str, Any]:
+async def session_check_direct(payload: dict[str, Any]) -> dict[str, Any]:
     async with async_playwright() as playwright:
-        context = await launch_context(playwright, payload, headless=bool(payload.get("headless", True)))
+        context = await launch_persistent_context(
+            playwright,
+            payload,
+            headless=bool(payload.get("headless", True)),
+        )
         try:
             page = await context.new_page()
             await page.goto(DASHBOARD_URL, wait_until="domcontentloaded", timeout=payload_timeout(payload))
@@ -128,112 +290,84 @@ async def session_check(payload: dict[str, Any]) -> dict[str, Any]:
             await context.close()
 
 
-async def proposal_prefill(payload: dict[str, Any]) -> dict[str, Any]:
+async def proposal_prefill_direct(payload: dict[str, Any]) -> dict[str, Any]:
     async with async_playwright() as playwright:
-        context = await launch_context(playwright, payload, headless=bool(payload.get("headless", False)))
+        context = await launch_persistent_context(
+            playwright,
+            payload,
+            headless=bool(payload.get("headless", False)),
+        )
         try:
             page = await context.new_page()
-            await open_and_fill_proposal(page, payload)
-            body_text = await page.locator("body").inner_text()
-            details_text = await page.locator("#proposta").input_value()
-
-            screenshot_path = await maybe_screenshot(page, payload.get("screenshotPath"))
-
-            return {
-                "currentUrl": page.url,
-                "proposalPageUrl": build_proposal_page_url(payload["proposalPageUrl"]),
-                "filledAmount": await page.locator("#oferta").input_value(),
-                "filledDeadlineDays": await page.locator("#duracao-estimada").input_value(),
-                "detailsLength": len(details_text),
-                "page": parse_page_snapshot(body_text),
-                "submitButtonVisible": await page.locator("#btnConcluirEnvioProposta").is_visible(),
-                **({"screenshotPath": screenshot_path} if screenshot_path else {}),
-            }
+            return await proposal_prefill_core(context, page, payload)
         finally:
             await context.close()
 
 
-async def proposal_submit(payload: dict[str, Any]) -> dict[str, Any]:
+async def proposal_submit_direct(payload: dict[str, Any]) -> dict[str, Any]:
     async with async_playwright() as playwright:
-        context = await launch_context(playwright, payload, headless=bool(payload.get("headless", False)))
+        context = await launch_persistent_context(
+            playwright,
+            payload,
+            headless=bool(payload.get("headless", False)),
+        )
         try:
             page = await context.new_page()
-            await emit_step(payload, "browser-opened", "Navegador Python aberto para a automacao.")
-            await open_and_fill_proposal(page, payload)
-            await emit_step(payload, "proposal-page-opened", "Pagina da proposta aberta.", page.url)
-
-            before_screenshot = await maybe_screenshot(page, payload.get("beforeScreenshotPath"))
-            submit_button = page.locator("#btnConcluirEnvioProposta")
-            submit_button_visible = await submit_button.is_visible()
-            submit_button_enabled = await submit_button.is_enabled()
-            body_text = await page.locator("body").inner_text()
-            details_text = await page.locator("#proposta").input_value()
-            filled_amount = await page.locator("#oferta").input_value()
-            filled_final_amount = await page.locator("#oferta-final").input_value()
-            filled_deadline = await page.locator("#duracao-estimada").input_value()
-            page_snapshot = parse_page_snapshot(body_text)
-            warnings = extract_warnings(body_text)
-            blocking_reasons = assess_submission_readiness(
-                page_snapshot=page_snapshot,
-                submit_button_enabled=submit_button_enabled,
-                submit_button_visible=submit_button_visible,
-                details_length=len(details_text),
-            )
-
-            await emit_step(payload, "readiness-evaluated", "Guardrails da pagina avaliados.", page.url)
-
-            execute_submit = bool(payload.get("executeSubmit", False))
-            submitted = False
-            post_submit_url = None
-            post_submit_has_form = None
-
-            if execute_submit and not blocking_reasons:
-                await emit_step(payload, "paused-before-submit", "Pausa curta antes do clique final.", page.url)
-                await maybe_wait(payload.get("observer", {}).get("holdOpenMs"))
-                await submit_button.click()
-                await emit_step(payload, "submit-clicked", "Botao final clicado.", page.url)
-                await page.wait_for_timeout(int(payload.get("postSubmitTimeoutMs", 5000)))
-                post_submit_url = page.url
-                post_submit_text = await page.locator("body").inner_text()
-                post_submit_has_form = "Enviar proposta" in post_submit_text and "Sua oferta" in post_submit_text
-                submitted = detect_submission_success(page.url, post_submit_text)
-            elif not execute_submit and payload.get("observer", {}).get("enabled"):
-                await emit_step(
-                    payload,
-                    "paused-before-submit",
-                    "Observacao concluida; pagina mantida aberta antes de fechar sem enviar.",
-                    page.url,
-                )
-                await maybe_wait(payload.get("observer", {}).get("holdOpenMs"))
-
-            after_screenshot = await maybe_screenshot(page, payload.get("afterScreenshotPath"))
-
-            return {
-                "currentUrl": page.url,
-                "proposalPageUrl": build_proposal_page_url(payload["proposalPageUrl"]),
-                "filledAmount": filled_amount,
-                "filledFinalAmount": filled_final_amount,
-                "filledDeadlineDays": filled_deadline,
-                "detailsLength": len(details_text),
-                "page": page_snapshot,
-                "warnings": warnings,
-                "blockingReasons": blocking_reasons,
-                "readyForManualSubmit": len(blocking_reasons) == 0,
-                "submitButtonVisible": submit_button_visible,
-                "submitButtonEnabled": submit_button_enabled,
-                "submitAttempted": execute_submit,
-                "submitted": submitted,
-                "postSubmitUrl": post_submit_url,
-                "postSubmitHasProposalForm": post_submit_has_form,
-                "beforeScreenshotPath": before_screenshot,
-                "afterScreenshotPath": after_screenshot,
-            }
+            return await proposal_submit_core(context, page, payload)
         finally:
             await context.close()
 
 
-async def launch_context(playwright: Any, payload: dict[str, Any], headless: bool) -> BrowserContext:
-    browser_name = payload.get("browserName", "firefox")
+async def authenticate_with_context(
+    context: BrowserContext,
+    page: Page,
+    payload: dict[str, Any],
+) -> dict[str, Any]:
+    await page.goto(LOGIN_URL, wait_until="domcontentloaded", timeout=payload_timeout(payload))
+
+    if await is_authenticated(page):
+        return await inspect_session(context, page, payload)
+
+    print(
+        (
+            "Janela da automacao Python aberta. "
+            "Faça o login manual no 99Freelas nessa janela dedicada. "
+            "O runner vai detectar a sessao autenticada e salvar automaticamente."
+        ),
+        flush=True,
+    )
+    deadline = asyncio.get_running_loop().time() + (
+        int(payload.get("authBootstrapTimeoutMs", AUTH_BOOTSTRAP_TIMEOUT_MS)) / 1000
+    )
+
+    while asyncio.get_running_loop().time() < deadline:
+        if page.is_closed():
+            raise RuntimeError("A janela da automacao foi fechada antes do login ser confirmado.")
+
+        try:
+            if await is_authenticated(page):
+                result = await inspect_session(context, page, payload)
+                if result["isAuthenticated"]:
+                    return result
+            elif "/dashboard" in page.url:
+                result = await inspect_session(context, page, payload)
+                if result["isAuthenticated"]:
+                    return result
+        except Exception:
+            pass
+
+        await asyncio.sleep(AUTH_BOOTSTRAP_POLL_INTERVAL_MS / 1000)
+
+    raise RuntimeError("Tempo esgotado aguardando autenticacao manual no navegador dedicado.")
+
+
+async def launch_persistent_context(
+    playwright: Any,
+    payload: dict[str, Any],
+    *,
+    headless: bool,
+) -> BrowserContext:
+    browser_name = payload.get("browserName", "chromium")
     profile_dir = Path(payload["profileDir"]).resolve()
     profile_dir.mkdir(parents=True, exist_ok=True)
     browser_type = getattr(playwright, browser_name)
@@ -254,7 +388,7 @@ async def inspect_session(
     payload: dict[str, Any],
 ) -> dict[str, Any]:
     await page.wait_for_load_state("domcontentloaded", timeout=payload_timeout(payload))
-    body_text = await page.locator("body").inner_text()
+    body_text = await safe_body_text(page)
     storage_state_path = Path(payload["storageStatePath"]).resolve()
     storage_state = await context.storage_state(path=str(storage_state_path))
 
@@ -265,6 +399,105 @@ async def inspect_session(
         "cookiesCount": len(storage_state.get("cookies", [])),
         "originsCount": len(storage_state.get("origins", [])),
         "detectedSignals": detect_session_signals(body_text, page.url),
+    }
+
+
+async def proposal_prefill_core(
+    context: BrowserContext,
+    page: Page,
+    payload: dict[str, Any],
+) -> dict[str, Any]:
+    await open_and_fill_proposal(page, payload)
+    body_text = await safe_body_text(page)
+    details_text = await page.locator("#proposta").input_value()
+    screenshot_path = await maybe_screenshot(page, payload.get("screenshotPath"))
+
+    return {
+        "currentUrl": page.url,
+        "proposalPageUrl": build_proposal_page_url(payload["proposalPageUrl"]),
+        "filledAmount": await page.locator("#oferta").input_value(),
+        "filledDeadlineDays": await page.locator("#duracao-estimada").input_value(),
+        "detailsLength": len(details_text),
+        "page": parse_page_snapshot(body_text),
+        "submitButtonVisible": await page.locator("#btnConcluirEnvioProposta").is_visible(),
+        **({"screenshotPath": screenshot_path} if screenshot_path else {}),
+    }
+
+
+async def proposal_submit_core(
+    context: BrowserContext,
+    page: Page,
+    payload: dict[str, Any],
+) -> dict[str, Any]:
+    await emit_step(payload, "browser-opened", "Navegador Python aberto para a automacao.")
+    await open_and_fill_proposal(page, payload)
+    await emit_step(payload, "proposal-page-opened", "Pagina da proposta aberta.", page.url)
+
+    before_screenshot = await maybe_screenshot(page, payload.get("beforeScreenshotPath"))
+    submit_button = page.locator("#btnConcluirEnvioProposta")
+    submit_button_visible = await submit_button.is_visible()
+    submit_button_enabled = await submit_button.is_enabled()
+    body_text = await safe_body_text(page)
+    details_text = await page.locator("#proposta").input_value()
+    filled_amount = await page.locator("#oferta").input_value()
+    filled_final_amount = await page.locator("#oferta-final").input_value()
+    filled_deadline = await page.locator("#duracao-estimada").input_value()
+    page_snapshot = parse_page_snapshot(body_text)
+    warnings = extract_warnings(body_text)
+    blocking_reasons = assess_submission_readiness(
+        page_snapshot=page_snapshot,
+        submit_button_enabled=submit_button_enabled,
+        submit_button_visible=submit_button_visible,
+        details_length=len(details_text),
+    )
+
+    await emit_step(payload, "readiness-evaluated", "Guardrails da pagina avaliados.", page.url)
+
+    execute_submit = bool(payload.get("executeSubmit", False))
+    submitted = False
+    post_submit_url = None
+    post_submit_has_form = None
+
+    if execute_submit and not blocking_reasons:
+        await emit_step(payload, "paused-before-submit", "Pausa curta antes do clique final.", page.url)
+        await maybe_wait(payload.get("observer", {}).get("holdOpenMs"))
+        await submit_button.click()
+        await emit_step(payload, "submit-clicked", "Botao final clicado.", page.url)
+        await page.wait_for_timeout(int(payload.get("postSubmitTimeoutMs", 5000)))
+        post_submit_url = page.url
+        post_submit_text = await safe_body_text(page)
+        post_submit_has_form = "Enviar proposta" in post_submit_text and "Sua oferta" in post_submit_text
+        submitted = detect_submission_success(page.url, post_submit_text)
+    elif not execute_submit and payload.get("observer", {}).get("enabled"):
+        await emit_step(
+            payload,
+            "paused-before-submit",
+            "Observacao concluida; pagina mantida aberta antes de fechar sem enviar.",
+            page.url,
+        )
+        await maybe_wait(payload.get("observer", {}).get("holdOpenMs"))
+
+    after_screenshot = await maybe_screenshot(page, payload.get("afterScreenshotPath"))
+
+    return {
+        "currentUrl": page.url,
+        "proposalPageUrl": build_proposal_page_url(payload["proposalPageUrl"]),
+        "filledAmount": filled_amount,
+        "filledFinalAmount": filled_final_amount,
+        "filledDeadlineDays": filled_deadline,
+        "detailsLength": len(details_text),
+        "page": page_snapshot,
+        "warnings": warnings,
+        "blockingReasons": blocking_reasons,
+        "readyForManualSubmit": len(blocking_reasons) == 0,
+        "submitButtonVisible": submit_button_visible,
+        "submitButtonEnabled": submit_button_enabled,
+        "submitAttempted": execute_submit,
+        "submitted": submitted,
+        "postSubmitUrl": post_submit_url,
+        "postSubmitHasProposalForm": post_submit_has_form,
+        "beforeScreenshotPath": before_screenshot,
+        "afterScreenshotPath": after_screenshot,
     }
 
 
@@ -309,6 +542,10 @@ async def emit_step(
     )
 
 
+async def safe_body_text(page: Page) -> str:
+    return await page.locator("body").inner_text()
+
+
 async def maybe_wait(delay_ms: Any) -> None:
     if delay_ms is None:
         return
@@ -328,7 +565,7 @@ async def maybe_screenshot(page: Page, screenshot_path: Any) -> str | None:
 
 
 async def is_authenticated(page: Page, body_text: str | None = None) -> bool:
-    text = body_text if body_text is not None else await page.locator("body").inner_text()
+    text = body_text if body_text is not None else await safe_body_text(page)
     if "/login" in page.url:
         return False
     return any(marker in text for marker in AUTH_TEXT_HINTS)
@@ -364,6 +601,10 @@ def payload_timeout(payload: dict[str, Any]) -> int:
 
 
 def parse_page_snapshot(text: str) -> dict[str, Any]:
+    has_offer_field = "Sua oferta" in text
+    has_details_field = "Detalhes" in text
+    has_proposal_action = "Enviar proposta" in text or "Melhorar proposta" in text
+
     return {
         "averageBidAmount": extract_currency(
             text,
@@ -385,7 +626,7 @@ def parse_page_snapshot(text: str) -> dict[str, Any]:
             text,
             r"Esta proposta requer\s+(\d+)\s+conex",
         ),
-        "hasProposalForm": "Enviar proposta" in text and "Sua oferta" in text and "Detalhes" in text,
+        "hasProposalForm": has_proposal_action and has_offer_field and has_details_field,
         "hasQuestionChannel": "Fazer pergunta" in text or "/project/message/" in text,
     }
 
@@ -397,7 +638,12 @@ def extract_warnings(text: str) -> list[str]:
         if not normalized:
             continue
         lowered = normalized.lower()
-        if "atenção" in lowered or "atencao" in lowered or "nao compartilhe" in lowered or "não compartilhe" in lowered:
+        if (
+            "atenção" in lowered
+            or "atencao" in lowered
+            or "nao compartilhe" in lowered
+            or "não compartilhe" in lowered
+        ):
             warnings.append(normalized)
     return warnings
 
@@ -440,6 +686,12 @@ def extract_integer(text: str, pattern: str) -> int | None:
     if not match:
         return None
     return int(match.group(1))
+
+
+def write_output(path: str, payload: dict[str, Any]) -> None:
+    output_path = Path(path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text(json.dumps(payload, ensure_ascii=True, indent=2), encoding="utf-8")
 
 
 if __name__ == "__main__":

@@ -35,6 +35,18 @@ export type ProposalSelectionResult = {
   reasons: string[];
 };
 
+function withUpdatedProposalSelection(
+  selection: ProposalSelectionResult,
+  proposal: Proposal,
+  opportunity?: Opportunity,
+): ProposalSelectionResult {
+  return {
+    proposal,
+    opportunity: opportunity ?? selection.opportunity,
+    reasons: selection.reasons,
+  };
+}
+
 export async function executeProposalSubmitFlow(input: {
   env: WorkerEnv;
   proposalId: string | null | undefined;
@@ -178,11 +190,14 @@ export async function executeProposalSubmitFlow(input: {
     after_screenshot_path: finalBrowser.afterScreenshotPath ?? null,
   });
 
+  const updatedOpportunity = liveSubmitted
+    ? await opportunities.update(opportunity.id, {
+        status: "SUBMITTED",
+      })
+    : null;
+
   if (liveSubmitted) {
     await Promise.all([
-      opportunities.update(opportunity.id, {
-        status: "SUBMITTED",
-      }),
       incrementCounter(counters, "real_submissions", today, dailyCounter?.value ?? 0),
       incrementCounter(counters, currentHourName, today, hourlyCounter?.value ?? 0),
     ]);
@@ -198,7 +213,11 @@ export async function executeProposalSubmitFlow(input: {
     liveSubmitted,
     guardrails,
     browser: finalBrowser,
-    selection,
+    selection: withUpdatedProposalSelection(
+      selection,
+      updated,
+      updatedOpportunity ?? undefined,
+    ),
   };
 }
 
@@ -321,7 +340,7 @@ export async function executeProposalObserveFlow(input: {
     liveSubmitted: false,
     guardrails,
     browser,
-    selection,
+    selection: withUpdatedProposalSelection(selection, updated),
   };
 }
 

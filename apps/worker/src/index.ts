@@ -6,6 +6,7 @@ import {
   prefill99FreelasProposalForm,
   prefill99FreelasProposalFormViaPython,
   ProposalRepository,
+  shutdown99FreelasPythonRunnerDaemon,
   validate99FreelasSessionViaPython,
   validate99FreelasSession,
 } from "@99freelas/integrations";
@@ -135,7 +136,7 @@ async function main() {
     if (env.BROWSER_AUTOMATION_RUNTIME === "python-playwright") {
       const session = await validate99FreelasSessionViaPython({
         browserName: env.PYTHON_BROWSER_NAME,
-        headless: true,
+        headless: env.BROWSER_HEADLESS,
         profileDir: env.PYTHON_BROWSER_PROFILE_DIR,
         pythonExecutable: env.PYTHON_EXECUTABLE,
         screenshotDir: env.BROWSER_SCREENSHOT_DIR,
@@ -174,6 +175,49 @@ async function main() {
           command,
           status: session.isAuthenticated ? "session-valid" : "session-invalid",
           session,
+        },
+        null,
+        2,
+      ),
+    );
+    return;
+  }
+
+  if (command === "session:shutdown") {
+    if (env.BROWSER_AUTOMATION_RUNTIME === "python-playwright") {
+      await shutdown99FreelasPythonRunnerDaemon({
+        browserName: env.PYTHON_BROWSER_NAME,
+        headless: env.BROWSER_HEADLESS,
+        profileDir: env.PYTHON_BROWSER_PROFILE_DIR,
+        pythonExecutable: env.PYTHON_EXECUTABLE,
+        screenshotDir: env.BROWSER_SCREENSHOT_DIR,
+        storageStatePath: env.PYTHON_BROWSER_STORAGE_STATE_PATH,
+      });
+
+      console.log(
+        JSON.stringify(
+          {
+            service: "worker",
+            command,
+            runtime: env.BROWSER_AUTOMATION_RUNTIME,
+            status: "daemon-stopped",
+          },
+          null,
+          2,
+        ),
+      );
+      return;
+    }
+
+    console.log(
+      JSON.stringify(
+        {
+          service: "worker",
+          command,
+          runtime: env.BROWSER_AUTOMATION_RUNTIME,
+          status: "not-applicable",
+          message:
+            'session:shutdown e necessario apenas no runtime "python-playwright".',
         },
         null,
         2,

@@ -24,8 +24,9 @@ As sete primeiras entregas agora cobrem a base do monorepo, a persistencia, a AP
 - `OpportunityScoringService`, `PricingService`, `DeadlineService`, `ComplianceValidatorService` e `DecisionEngineService`
 - testes unitarios para o nucleo de regras no pacote `core`
 - worker usando score real baseado em regras em vez de score fixo
-- provider OpenAI para geracao estruturada de proposta com `Responses API`
-- prompt versionado `proposal-v1` com saida JSON validada
+- provider local-template para geracao automatizada de proposta sem custo por API
+- provider OpenAI opcional, preservado na arquitetura para evolucao futura
+- prompt versionado `proposal-v1` e estrategia local `proposal-template-v1`
 - novo job `proposal.generate` encadeado apos o score
 - persistencia da proposta no Supabase com compliance, estrategia de preco e estrategia de prazo
 - endpoint manual `POST /opportunities/:id/generate-proposal` para regenerar proposta sem reimportar a oportunidade
@@ -34,6 +35,7 @@ As sete primeiras entregas agora cobrem a base do monorepo, a persistencia, a AP
 - perfil dedicado da automacao em `.auth/99freelas.automation-profile`
 - comando `pnpm auth:99freelas` com reaproveitamento de sessao salva
 - comando `pnpm session:check` para validar se a sessao ainda esta utilizavel
+- comando `pnpm session:shutdown` para encerrar o daemon local do navegador dedicado
 - seletores reais do formulario de proposta mapeados a partir de uma aba autenticada no Chrome
 - parser testado da pagina de proposta para media de ofertas, prazo medio e conexoes
 - comando `pnpm proposal:prefill` para abrir a pagina real da proposta e preencher os campos sem clicar no envio final
@@ -132,7 +134,7 @@ Para rodar a automacao em outro navegador e deixar o Chrome livre:
 
 ```bash
 python3 -m pip install -r apps/browser-runner/requirements.txt
-python3 -m playwright install firefox
+python3 -m playwright install chromium
 ```
 
 Depois configure no `.env.local`:
@@ -140,19 +142,169 @@ Depois configure no `.env.local`:
 ```bash
 BROWSER_AUTOMATION_RUNTIME="python-playwright"
 PYTHON_EXECUTABLE="python3"
-PYTHON_BROWSER_NAME="firefox"
+PYTHON_BROWSER_NAME="chromium"
 PYTHON_BROWSER_PROFILE_DIR="./.auth/99freelas.python-profile"
 PYTHON_BROWSER_STORAGE_STATE_PATH="./.auth/99freelas.python-storage-state.json"
 ```
 
 Fluxo sugerido:
 
-- rode `pnpm auth:99freelas` uma vez para autenticar o navegador dedicado da automacao
-- a janela dedicada abre e o bootstrap fica monitorando ate detectar a sessao autenticada automaticamente
+- rode `pnpm auth:99freelas` uma vez para subir o daemon local e autenticar o Chromium dedicado da automacao
+- faca o login manual apenas nessa primeira vez, na janela dedicada
+- depois disso, o daemon reaproveita a mesma sessao e mantem o navegador de automacao separado do seu Chrome pessoal
 - use `pnpm session:check` para confirmar a sessao
-- depois siga com `pnpm proposal:prefill`, `pnpm proposal:observe` ou `pnpm proposal:submit`
+- siga com `pnpm proposal:prefill`, `pnpm proposal:observe` ou `pnpm proposal:submit`
+- quando quiser encerrar o navegador dedicado em segundo plano, use `pnpm session:shutdown`
 
 Nesse modo, o worker continua usando Supabase, score, LLM e guardrails do projeto atual. O que muda e apenas o "braço" de browser automation.
+
+## Como subir e operar do zero
+
+### 1. Preparacao inicial
+
+Instale as dependencias JavaScript:
+
+```bash
+pnpm install
+```
+
+Instale o runtime Python do navegador dedicado:
+
+```bash
+python3 -m pip install -r apps/browser-runner/requirements.txt
+python3 -m playwright install chromium
+```
+
+Suba o Redis local:
+
+```bash
+docker compose up -d redis
+```
+
+Crie um `.env.local` a partir do `.env.example` e preencha, no minimo:
+
+```bash
+SUPABASE_URL="..."
+SUPABASE_ANON_KEY="..."
+SUPABASE_SERVICE_ROLE_KEY="..."
+NEXT_PUBLIC_SUPABASE_URL="..."
+NEXT_PUBLIC_SUPABASE_ANON_KEY="..."
+REDIS_URL="redis://localhost:6379"
+BROWSER_AUTOMATION_RUNTIME="python-playwright"
+PYTHON_EXECUTABLE="./.venv/bin/python"
+PYTHON_BROWSER_NAME="chromium"
+PYTHON_BROWSER_PROFILE_DIR="./.auth/99freelas.python-profile"
+PYTHON_BROWSER_STORAGE_STATE_PATH="./.auth/99freelas.python-storage-state.json"
+AUTOMATION_MODE="REVIEW_REQUIRED"
+ENABLE_REAL_99FREELAS_SUBMISSION=false
+```
+
+Se no futuro voce quiser reativar um provider pago:
+
+```bash
+LLM_PROVIDER="openai"
+OPENAI_API_KEY="..."
+OPENAI_MODEL="gpt-4.1-mini"
+```
+
+Se voce estiver usando virtualenv local, o caminho mais seguro e:
+
+```bash
+python3 -m venv .venv
+./.venv/bin/python -m pip install -r apps/browser-runner/requirements.txt
+./.venv/bin/python -m playwright install chromium
+```
+
+### 2. Validacao tecnica
+
+Antes de operar:
+
+```bash
+pnpm typecheck
+pnpm test
+```
+
+### 3. Primeiro login da automacao
+
+Suba a sessao dedicada:
+
+```bash
+pnpm auth:99freelas
+```
+
+O que acontece:
+
+- o projeto sobe um daemon local em Python
+- abre um Chromium dedicado para a automacao
+- voce faz o login manual no 99Freelas uma unica vez
+- a sessao fica reaproveitavel para os proximos comandos
+
+Valide a sessao:
+
+```bash
+pnpm session:check
+```
+
+### 4. Operacao do dia a dia
+
+Para observar a IA preenchendo sem enviar:
+
+```bash
+pnpm proposal:observe
+```
+
+Para preencher uma proposta especifica sem enviar:
+
+```bash
+pnpm proposal:prefill -- --proposal-id <id>
+```
+
+Para testar o fluxo completo em modo seguro, sem clique real:
+
+```bash
+pnpm proposal:submit -- --proposal-id <id>
+```
+
+Para observar o fluxo completo com navegador visivel:
+
+```bash
+pnpm proposal:submit -- --proposal-id <id> --observe --step-delay-ms 2000 --hold-ms 15000
+```
+
+Para envio real, somente quando voce decidir habilitar conscientemente:
+
+```bash
+pnpm proposal:submit -- --proposal-id <id> --live --confirm-live-submit --observe
+```
+
+Antes disso, confirme que o `.env.local` esta com:
+
+```bash
+AUTOMATION_MODE="AUTOPILOT"
+ENABLE_REAL_99FREELAS_SUBMISSION=true
+```
+
+### 5. Encerramento
+
+Quando terminar o uso do navegador dedicado em segundo plano:
+
+```bash
+pnpm session:shutdown
+```
+
+Se quiser iniciar API, worker e dashboard em paralelo para desenvolvimento:
+
+```bash
+pnpm dev:api
+pnpm dev:worker
+pnpm dev:dashboard
+```
+
+Ou tudo junto:
+
+```bash
+pnpm dev
+```
 
 ## Proximos passos
 

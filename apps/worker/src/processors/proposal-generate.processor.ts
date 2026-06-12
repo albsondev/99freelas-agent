@@ -26,7 +26,7 @@ type ProcessProposalGenerateContext = {
   runs: AutomationRunRepository;
   settings: SettingsRepository;
   userProfiles: UserProfileRepository;
-  llm: ProposalLlmProvider | null;
+  llm: ProposalLlmProvider;
 };
 
 export async function processProposalGenerateJob(
@@ -36,16 +36,6 @@ export async function processProposalGenerateJob(
   await context.runs.update(payload.runId, {
     status: "PROCESSING",
   });
-
-  if (!context.llm) {
-    await context.runs.update(payload.runId, {
-      status: "FAILED",
-      finished_at: new Date().toISOString(),
-      error_code: "LLM_PROVIDER_NOT_CONFIGURED",
-      error_message: "No LLM provider is configured for proposal generation.",
-    });
-    return;
-  }
 
   const opportunity = await context.opportunities.getById(payload.opportunityId);
 

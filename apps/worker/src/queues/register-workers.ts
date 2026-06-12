@@ -8,6 +8,7 @@ import {
   QueueProducer,
   SettingsRepository,
   UserProfileRepository,
+  createLocalTemplateProposalProvider,
   createProposalLlmProvider,
   createRedisConnection,
   createSupabaseAdminClient,
@@ -48,7 +49,13 @@ export async function registerWorkers(env: WorkerEnv): Promise<WorkerHandle> {
           temperature: env.LLM_TEMPERATURE,
           maxOutputTokens: env.LLM_MAX_TOKENS,
         })
-      : null;
+      : createLocalTemplateProposalProvider();
+
+  if (env.LLM_PROVIDER === "openai" && !env.OPENAI_API_KEY) {
+    console.warn(
+      "OPENAI_API_KEY nao configurada. O worker vai usar local-template para geracao de propostas.",
+    );
+  }
 
   const workers = [
     new Worker<QueuePayloadByName["email.poll"]>(

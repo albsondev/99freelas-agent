@@ -44,4 +44,28 @@ describe("parse99FreelasProposalPage", () => {
       hasQuestionChannel: false,
     });
   });
+
+  it("detects the real bid page when the site uses plain body text and the label melhorar proposta", () => {
+    const snapshot = `
+Front-end e design React, Next.js + Tailwind para ajustes (+ detalhes)
+Valor médio das propostas: R$ 565,33
+Duração média estimada: 7 dias
+Melhorar proposta
+Sua oferta
+Oferta final
+Duração estimada
+Detalhes
+Fazer pergunta
+    `;
+
+    expect(parse99FreelasProposalPage(snapshot)).toEqual({
+      averageBidAmount: 565.33,
+      averageDeadlineDays: 7,
+      minimumOfferAmount: null,
+      availableConnections: null,
+      requiredConnections: null,
+      hasProposalForm: true,
+      hasQuestionChannel: true,
+    });
+  });
 });

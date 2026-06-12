@@ -42,7 +42,7 @@ export const appEnvSchema = z.object({
   IMAP_PASSWORD: z.string().default(""),
   EMAIL_FROM_FILTER: z.string().default("99freelas"),
   EMAIL_SUBJECT_FILTER: z.string().default(""),
-  LLM_PROVIDER: z.enum(["openai"]).default("openai"),
+  LLM_PROVIDER: z.enum(["local-template", "openai"]).default("local-template"),
   OPENAI_API_KEY: z.string().default(""),
   OPENAI_MODEL: nonEmptyString.default("gpt-4.1-mini"),
   LLM_TEMPERATURE: z.coerce.number().min(0).max(2).default(0.35),
@@ -59,7 +59,7 @@ export const appEnvSchema = z.object({
   BROWSER_CHROME_PROFILE_DIRECTORY: z.string().default("Default"),
   BROWSER_SCREENSHOT_DIR: nonEmptyString.default("./.audit/screenshots"),
   PYTHON_EXECUTABLE: nonEmptyString.default("python3"),
-  PYTHON_BROWSER_NAME: z.enum(["chromium", "firefox", "webkit"]).default("firefox"),
+  PYTHON_BROWSER_NAME: z.enum(["chromium", "firefox", "webkit"]).default("chromium"),
   PYTHON_BROWSER_PROFILE_DIR: nonEmptyString.default("./.auth/99freelas.python-profile"),
   PYTHON_BROWSER_STORAGE_STATE_PATH: nonEmptyString.default(
     "./.auth/99freelas.python-storage-state.json",

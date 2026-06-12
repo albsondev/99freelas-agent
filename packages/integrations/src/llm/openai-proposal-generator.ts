@@ -10,6 +10,8 @@ import {
   PROPOSAL_PROMPT_VERSION,
 } from "./proposal-prompt.js";
 
+export type ProposalLlmProviderName = "openai" | "local-template";
+
 export type ProposalGenerationInput = {
   opportunity: Opportunity;
   amount: number;
@@ -30,7 +32,7 @@ export type ProposalGenerationUsage = {
 };
 
 export type ProposalGenerationResult = ProposalDraft & {
-  llmProvider: "openai";
+  llmProvider: ProposalLlmProviderName;
   llmModel: string;
   llmPromptVersion: string;
   responseId?: string;
