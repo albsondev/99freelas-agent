@@ -200,7 +200,7 @@ async function run99FreelasProposalSubmission(
     const submitButtonVisible = await submitButton.isVisible();
     const submitButtonEnabled = await submitButton.isEnabled();
     const snapshot = await page.locator("body").innerText();
-    const pageSignals = parse99FreelasProposalPage(snapshot);
+    const pageSignals = await waitForCommercialSignalsOnPage(page, timeoutMs);
     const warnings = extract99FreelasProposalWarnings(snapshot);
 
     const filledAmount = await page
@@ -317,6 +317,33 @@ async function run99FreelasProposalSubmission(
   } finally {
     await opened.close();
   }
+}
+
+async function waitForCommercialSignalsOnPage(
+  page: { locator: (selector: string) => { innerText: () => Promise<string> } },
+  timeoutMs: number,
+): Promise<ProposalPageSnapshot> {
+  const startedAt = Date.now();
+  let lastSignals = parse99FreelasProposalPage("");
+
+  while (Date.now() - startedAt < timeoutMs) {
+    const snapshot = await page.locator("body").innerText();
+    lastSignals = parse99FreelasProposalPage(snapshot);
+
+    if (
+      lastSignals.averageBidAmount !== null ||
+      lastSignals.averageDeadlineDays !== null ||
+      lastSignals.minimumOfferAmount !== null
+    ) {
+      return lastSignals;
+    }
+
+    await new Promise((resolvePromise) => {
+      setTimeout(resolvePromise, 500);
+    });
+  }
+
+  return lastSignals;
 }
 
 export function assessSubmissionReadiness(input: {

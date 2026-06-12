@@ -88,6 +88,22 @@ export function inferProjectComplexity(
     ].join(" "),
   );
 
+  const isLightWordPressAdjustment =
+    /\bwordpress\b|\belementor\b/i.test(source) &&
+    /\bajuste\b|\bcorre(?:ç|c)(?:a|ã)o\b|\bbug\b|\bmobile\b|\bresponsiv[oa]\b|\btelefone\b/i.test(
+      source,
+    );
+
+  if (isLightWordPressAdjustment) {
+    return {
+      tier: "LOW",
+      baseHours: 10,
+      baseDays: 2,
+      needsReview: false,
+      reasons: ["Projeto com sinais de ajuste pontual em WordPress."],
+    };
+  }
+
   for (const rule of COMPLEXITY_RULES) {
     if (rule.patterns.some((pattern) => pattern.test(source))) {
       return {
@@ -124,4 +140,3 @@ export function inferProjectComplexity(
     ],
   };
 }
-

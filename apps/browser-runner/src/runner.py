@@ -55,6 +55,8 @@ async def main() -> None:
         result = await project_list_collect_direct(payload)
     elif args.command == "project-page-scrape":
         result = await project_page_scrape_direct(payload)
+    elif args.command == "proposal-page-inspect":
+        result = await proposal_page_inspect_direct(payload)
     elif args.command == "proposal-prefill":
         result = await proposal_prefill_direct(payload)
     elif args.command == "proposal-submit":
@@ -74,6 +76,7 @@ def parse_args() -> argparse.Namespace:
             "session-check",
             "project-list-collect",
             "project-page-scrape",
+            "proposal-page-inspect",
             "proposal-prefill",
             "proposal-submit",
             "serve",
@@ -166,6 +169,7 @@ class PythonRunnerDaemon:
             "session-check": self.session_check,
             "project-list-collect": self.project_list_collect,
             "project-page-scrape": self.project_page_scrape,
+            "proposal-page-inspect": self.proposal_page_inspect,
             "proposal-prefill": self.proposal_prefill,
             "proposal-submit": self.proposal_submit,
             "shutdown": self.shutdown,
@@ -258,6 +262,13 @@ class PythonRunnerDaemon:
         finally:
             await page.close()
 
+    async def proposal_page_inspect(self, payload: dict[str, Any]) -> dict[str, Any]:
+        page = await self._new_page()
+        try:
+            return await inspect_proposal_page_core(page, payload)
+        finally:
+            await page.close()
+
     async def proposal_submit(self, payload: dict[str, Any]) -> dict[str, Any]:
         page = await self._new_page()
         try:
@@ -330,6 +341,20 @@ async def proposal_prefill_direct(payload: dict[str, Any]) -> dict[str, Any]:
         try:
             page = await get_or_create_context_page(context)
             return await proposal_prefill_core(context, page, payload)
+        finally:
+            await context.close()
+
+
+async def proposal_page_inspect_direct(payload: dict[str, Any]) -> dict[str, Any]:
+    async with async_playwright() as playwright:
+        context = await launch_persistent_context(
+            playwright,
+            payload,
+            headless=bool(payload.get("headless", False)),
+        )
+        try:
+            page = await get_or_create_context_page(context)
+            return await inspect_proposal_page_core(page, payload)
         finally:
             await context.close()
 
@@ -476,7 +501,7 @@ async def proposal_prefill_core(
     payload: dict[str, Any],
 ) -> dict[str, Any]:
     await open_and_fill_proposal(page, payload)
-    body_text = await safe_body_text(page)
+    body_text = await wait_for_market_signals(page, payload_timeout(payload))
     details_text = await page.locator("#proposta").input_value()
     screenshot_path = await maybe_screenshot(page, payload.get("screenshotPath"))
 
@@ -489,6 +514,26 @@ async def proposal_prefill_core(
         "page": parse_page_snapshot(body_text),
         "submitButtonVisible": await page.locator("#btnConcluirEnvioProposta").is_visible(),
         **({"screenshotPath": screenshot_path} if screenshot_path else {}),
+    }
+
+
+async def inspect_proposal_page_core(page: Page, payload: dict[str, Any]) -> dict[str, Any]:
+    await page.goto(
+        build_proposal_page_url(payload["proposalPageUrl"]),
+        wait_until="domcontentloaded",
+        timeout=payload_timeout(payload),
+    )
+    await page.locator("#proposal-form, form[action*='proposal'], #oferta").first.wait_for(
+        state="visible",
+        timeout=payload_timeout(payload),
+    )
+    body_text = await wait_for_market_signals(page, payload_timeout(payload))
+
+    return {
+        "currentUrl": page.url,
+        "proposalPageUrl": build_proposal_page_url(payload["proposalPageUrl"]),
+        "page": parse_page_snapshot(body_text),
+        "submitButtonVisible": await page.locator("#btnConcluirEnvioProposta").is_visible(),
     }
 
 
@@ -505,7 +550,7 @@ async def proposal_submit_core(
     submit_button = page.locator("#btnConcluirEnvioProposta")
     submit_button_visible = await submit_button.is_visible()
     submit_button_enabled = await submit_button.is_enabled()
-    body_text = await safe_body_text(page)
+    body_text = await wait_for_market_signals(page, payload_timeout(payload))
     details_text = await page.locator("#proposta").input_value()
     filled_amount = await page.locator("#oferta").input_value()
     filled_final_amount = await page.locator("#oferta-final").input_value()
@@ -533,7 +578,7 @@ async def proposal_submit_core(
         await emit_step(payload, "submit-clicked", "Botao final clicado.", page.url)
         await page.wait_for_timeout(int(payload.get("postSubmitTimeoutMs", 5000)))
         post_submit_url = page.url
-        post_submit_text = await safe_body_text(page)
+        post_submit_text = await wait_for_market_signals(page, payload_timeout(payload))
         post_submit_has_form = "Enviar proposta" in post_submit_text and "Sua oferta" in post_submit_text
         submitted = detect_submission_success(page.url, post_submit_text)
     elif not execute_submit and payload.get("observer", {}).get("enabled"):
@@ -705,6 +750,10 @@ async def open_and_fill_proposal(page: Page, payload: dict[str, Any]) -> None:
         wait_until="domcontentloaded",
         timeout=payload_timeout(payload),
     )
+    await page.locator("#proposal-form, form[action*='proposal'], #oferta").first.wait_for(
+        state="visible",
+        timeout=payload_timeout(payload),
+    )
     await page.locator("#oferta").fill(format_money_input(payload["amount"]))
     await emit_step(payload, "amount-filled", "Campo de oferta preenchido.", page.url)
     await maybe_wait(payload.get("observer", {}).get("stepDelayMs"))
@@ -742,6 +791,26 @@ async def emit_step(
 
 async def safe_body_text(page: Page) -> str:
     return await page.locator("body").inner_text()
+
+
+async def wait_for_market_signals(page: Page, timeout_ms: int) -> str:
+    deadline = asyncio.get_running_loop().time() + (timeout_ms / 1000)
+    last_text = ""
+
+    while asyncio.get_running_loop().time() < deadline:
+        last_text = await safe_body_text(page)
+        snapshot = parse_page_snapshot(last_text)
+
+        if (
+            snapshot["averageBidAmount"] is not None
+            or snapshot["averageDeadlineDays"] is not None
+            or snapshot["minimumOfferAmount"] is not None
+        ):
+            return last_text
+
+        await asyncio.sleep(0.5)
+
+    return last_text
 
 
 async def maybe_wait(delay_ms: Any) -> None:

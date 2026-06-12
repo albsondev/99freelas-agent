@@ -60,7 +60,13 @@ export class DecisionEngineService {
       blockingReasons.push("Limite operacional de envio automatico atingido.");
     }
 
-    if (input.pricing.amount < input.minimumProposalAmountBrl) {
+    const mustEnforceMinimumProposalAmount =
+      !(input.hasAverageBid && input.pricing.strategy === "AVERAGE_BID_DISCOUNT");
+
+    if (
+      mustEnforceMinimumProposalAmount &&
+      input.pricing.amount < input.minimumProposalAmountBrl
+    ) {
       blockingReasons.push("Valor calculado ficou abaixo do minimo configurado.");
     }
 
@@ -160,4 +166,3 @@ export class DecisionEngineService {
     };
   }
 }
-

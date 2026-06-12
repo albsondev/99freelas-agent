@@ -15,6 +15,7 @@ import type {
   Scrape99FreelasProjectPageResult,
 } from "./99freelas-project-page.js";
 import type {
+  Inspect99FreelasProposalPageResult,
   Prefill99FreelasProposalInput,
   Prefill99FreelasProposalResult,
 } from "./99freelas-proposal-form.js";
@@ -53,6 +54,10 @@ type PythonRunnerPrefillInput = PythonRunnerBaseInput &
     | "chromeProfileDirectory"
   >;
 
+type PythonRunnerInspectProposalPageInput = PythonRunnerBaseInput & {
+  proposalPageUrl: string;
+};
+
 type PythonRunnerSubmitInput = PythonRunnerBaseInput &
   Omit<
     Submit99FreelasProposalInput,
@@ -78,9 +83,12 @@ type DaemonCommandName =
   | "session-check"
   | "project-list-collect"
   | "project-page-scrape"
+  | "proposal-page-inspect"
   | "proposal-prefill"
   | "proposal-submit"
   | "shutdown";
+
+type DirectCommandName = Exclude<DaemonCommandName, "health" | "shutdown">;
 
 type DaemonEnvelope<T> =
   | {
@@ -102,55 +110,64 @@ const DEFAULT_DAEMON_PORT = 44731;
 export async function authenticate99FreelasSessionViaPython(
   input: PythonRunnerAuthInput,
 ): Promise<BrowserSessionResult> {
-  await ensurePythonRunnerDaemon(input);
-  return sendDaemonCommand<BrowserSessionResult>("auth", input, 16 * 60_000);
+  await shutdown99FreelasPythonRunnerDaemon(input).catch(() => undefined);
+  return runWithDaemonFallback<BrowserSessionResult>("auth", input, 16 * 60_000);
 }
 
 export async function validate99FreelasSessionViaPython(
   input: PythonRunnerAuthInput,
 ): Promise<BrowserSessionResult> {
-  await ensurePythonRunnerDaemon(input);
-  return sendDaemonCommand<BrowserSessionResult>("session-check", input, input.timeoutMs ?? 45_000);
+  return runWithDaemonFallback<BrowserSessionResult>(
+    "session-check",
+    input,
+    input.timeoutMs ?? 45_000,
+  );
 }
 
 export async function prefill99FreelasProposalFormViaPython(
   input: PythonRunnerPrefillInput,
 ): Promise<Prefill99FreelasProposalResult> {
-  await ensurePythonRunnerDaemon(input);
-  return sendDaemonCommand<Prefill99FreelasProposalResult>(
+  return runWithDaemonFallback<Prefill99FreelasProposalResult>(
     "proposal-prefill",
     input,
     input.timeoutMs ?? 60_000,
   );
 }
 
+export async function inspect99FreelasProposalPageViaPython(
+  input: PythonRunnerInspectProposalPageInput,
+): Promise<Inspect99FreelasProposalPageResult> {
+  return runWithDaemonFallback<Inspect99FreelasProposalPageResult>(
+    "proposal-page-inspect",
+    input,
+    input.timeoutMs ?? 120_000,
+  );
+}
+
 export async function collect99FreelasProjectListingsViaPython(
   input: Collect99FreelasProjectListingsInput,
 ): Promise<Collect99FreelasProjectListingsResult> {
-  await ensurePythonRunnerDaemon(input);
-  return sendDaemonCommand<Collect99FreelasProjectListingsResult>(
+  return runWithDaemonFallback<Collect99FreelasProjectListingsResult>(
     "project-list-collect",
     input,
-    input.timeoutMs ?? 60_000,
+    input.timeoutMs ?? 90_000,
   );
 }
 
 export async function scrape99FreelasProjectPageViaPython(
   input: Scrape99FreelasProjectPageViaPythonInput,
 ): Promise<Scrape99FreelasProjectPageResult> {
-  await ensurePythonRunnerDaemon(input);
-  return sendDaemonCommand<Scrape99FreelasProjectPageResult>(
+  return runWithDaemonFallback<Scrape99FreelasProjectPageResult>(
     "project-page-scrape",
     input,
-    input.timeoutMs ?? 60_000,
+    input.timeoutMs ?? 90_000,
   );
 }
 
 export async function mockSubmit99FreelasProposalViaPython(
   input: PythonRunnerSubmitInput,
 ): Promise<MockSubmit99FreelasProposalResult> {
-  await ensurePythonRunnerDaemon(input);
-  return sendDaemonCommand<MockSubmit99FreelasProposalResult>(
+  return runWithDaemonFallback<MockSubmit99FreelasProposalResult>(
     "proposal-submit",
     {
       ...input,
@@ -163,8 +180,7 @@ export async function mockSubmit99FreelasProposalViaPython(
 export async function submit99FreelasProposalViaPython(
   input: PythonRunnerSubmitInput,
 ): Promise<ProposalSubmissionBrowserResult> {
-  await ensurePythonRunnerDaemon(input);
-  return sendDaemonCommand<ProposalSubmissionBrowserResult>(
+  return runWithDaemonFallback<ProposalSubmissionBrowserResult>(
     "proposal-submit",
     {
       ...input,
@@ -215,6 +231,19 @@ async function ensurePythonRunnerDaemon(input: PythonRunnerConfig): Promise<void
   }
 }
 
+async function runWithDaemonFallback<T>(
+  command: DirectCommandName,
+  payload: unknown,
+  timeoutMs: number,
+): Promise<T> {
+  try {
+    await ensurePythonRunnerDaemon(payload as PythonRunnerConfig);
+    return await sendDaemonCommand<T>(command, payload, timeoutMs);
+  } catch (error) {
+    return runPythonCommandDirect<T>(command, payload, timeoutMs, error);
+  }
+}
+
 async function isDaemonHealthy(input: PythonRunnerConfig): Promise<boolean> {
   try {
     const result = await sendDaemonCommand<{ status: string }>("health", input, 1_500);
@@ -262,7 +291,7 @@ async function sendDaemonCommand<T = unknown>(
         settled = true;
         rejectPromise(new Error(`Timed out waiting for Python browser daemon command ${command}.`));
       }
-    }, timeoutMs);
+    }, timeoutMs + 15_000);
 
     socket.on("connect", () => {
       socket.write(
@@ -318,6 +347,80 @@ async function sendDaemonCommand<T = unknown>(
       }
     });
   });
+}
+
+async function runPythonCommandDirect<T>(
+  command: DirectCommandName,
+  payload: unknown,
+  timeoutMs: number,
+  cause?: unknown,
+): Promise<T> {
+  const workdir = await mkdtemp(resolve(tmpdir(), "99freelas-python-direct-"));
+  const inputPath = resolve(workdir, "runner-input.json");
+  const outputPath = resolve(workdir, "runner-output.json");
+
+  try {
+    await writeFile(inputPath, JSON.stringify(payload, null, 2), "utf8");
+
+    const stderrChunks: Buffer[] = [];
+    const child = spawn(
+      extractPythonExecutable(payload),
+      [PYTHON_RUNNER_SCRIPT_PATH, command, "--input", inputPath, "--output", outputPath],
+      {
+        cwd: PROJECT_ROOT,
+        env: process.env,
+        stdio: ["ignore", "ignore", "pipe"],
+      },
+    );
+
+    child.stderr.on("data", (chunk: Buffer | string) => {
+      stderrChunks.push(Buffer.from(chunk));
+    });
+
+    const exitCode = await new Promise<number>((resolvePromise, rejectPromise) => {
+      let settled = false;
+      const timer = setTimeout(() => {
+        child.kill("SIGTERM");
+        if (!settled) {
+          settled = true;
+          rejectPromise(
+            new Error(`Timed out waiting for Python runner direct command ${command}.`),
+          );
+        }
+      }, timeoutMs + 15_000);
+
+      child.on("error", (error) => {
+        clearTimeout(timer);
+        if (!settled) {
+          settled = true;
+          rejectPromise(error);
+        }
+      });
+
+      child.on("close", (code) => {
+        clearTimeout(timer);
+        if (!settled) {
+          settled = true;
+          resolvePromise(code ?? 0);
+        }
+      });
+    });
+
+    if (exitCode !== 0) {
+      const stderr = Buffer.concat(stderrChunks).toString("utf8").trim();
+      const directMessage =
+        stderr.length > 0
+          ? `Python runner direct command ${command} failed: ${stderr}`
+          : `Python runner direct command ${command} exited with code ${exitCode}.`;
+      const daemonMessage = cause instanceof Error ? ` Daemon fallback cause: ${cause.message}` : "";
+      throw new Error(`${directMessage}${daemonMessage}`);
+    }
+
+    const raw = await readFile(outputPath, "utf8");
+    return JSON.parse(raw) as T;
+  } finally {
+    await rm(workdir, { recursive: true, force: true });
+  }
 }
 
 function extractPythonExecutable(payload: unknown): string {

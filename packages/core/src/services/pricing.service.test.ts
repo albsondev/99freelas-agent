@@ -21,7 +21,7 @@ describe("PricingService", () => {
     expect(result.amount).toBe(600);
   });
 
-  it("raises the amount to the commercial floor when discount gets too low", () => {
+  it("raises the amount to the platform minimum when the discount gets too low", () => {
     const service = new PricingService();
     const result = service.calculate({
       title: "Bug simples",
@@ -29,6 +29,7 @@ describe("PricingService", () => {
       skills: ["Correção de bugs"],
       deadlineDays: 4,
       averageBidAmount: 200,
+      minimumPlatformOfferBrl: 150,
       minimumProposalAmountBrl: 150,
       minimumDailyRateBrl: 120,
       defaultHourlyRateBrl: 50,
@@ -36,8 +37,47 @@ describe("PricingService", () => {
     });
 
     expect(result.strategy).toBe("MINIMUM_FLOOR");
-    expect(result.amount).toBeGreaterThanOrEqual(480);
+    expect(result.amount).toBe(150);
     expect(result.warnings.length).toBeGreaterThan(0);
   });
-});
 
+  it("keeps a simple wordpress mobile adjustment commercially close to the market average", () => {
+    const service = new PricingService();
+    const result = service.calculate({
+      title: "Customização de site WordPress (ajuste versão mobile)",
+      description:
+        "Customização simples de site para ajustar a versão mobile e atualizar telefones.",
+      skills: ["WordPress"],
+      deadlineDays: 2,
+      averageBidAmount: 530,
+      minimumProposalAmountBrl: 150,
+      minimumDailyRateBrl: 120,
+      defaultHourlyRateBrl: 50,
+      priceDiscountFactor: 0.5,
+    });
+
+    expect(result.strategy).toBe("AVERAGE_BID_DISCOUNT");
+    expect(result.amount).toBe(270);
+  });
+
+  it("keeps the market discount even when it goes below the personal daily floor", () => {
+    const service = new PricingService();
+    const result = service.calculate({
+      title: "Customização de site WordPress (ajuste versão mobile)",
+      description:
+        "Customização simples de site para ajustar a versão mobile e atualizar telefones.",
+      skills: ["WordPress"],
+      deadlineDays: 2,
+      averageBidAmount: 298.18,
+      minimumPlatformOfferBrl: 50,
+      minimumProposalAmountBrl: 150,
+      minimumDailyRateBrl: 120,
+      defaultHourlyRateBrl: 50,
+      priceDiscountFactor: 0.5,
+    });
+
+    expect(result.strategy).toBe("AVERAGE_BID_DISCOUNT");
+    expect(result.amount).toBe(150);
+    expect(result.warnings).toEqual([]);
+  });
+});

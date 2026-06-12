@@ -102,5 +102,54 @@ describe("DecisionEngineService", () => {
     expect(result.decision).toBe("FAILED");
     expect(result.canSubmitAutomatically).toBe(false);
   });
-});
 
+  it("does not block discounted market pricing below the personal minimum when average bid exists", () => {
+    const service = new DecisionEngineService();
+    const result = service.decide({
+      mode: "AUTOPILOT",
+      score: {
+        score: 90,
+        decisionHint: "AUTO_SUBMIT",
+        reasons: [],
+        matchedSkills: ["WordPress"],
+        missingSkills: [],
+        riskFlags: [],
+      },
+      pricing: {
+        amount: 150,
+        strategy: "AVERAGE_BID_DISCOUNT",
+        explanation: "ok",
+        warnings: [],
+      },
+      deadline: {
+        deadlineDays: 2,
+        strategy: "AVERAGE_DEADLINE_REDUCTION",
+        explanation: "ok",
+        warnings: [],
+        needsReview: false,
+      },
+      compliance: {
+        status: "APPROVED",
+        flags: [],
+        blockingReasons: [],
+      },
+      minimumProposalAmountBrl: 200,
+      minDeadlineDays: 2,
+      hasAverageBid: true,
+      clearScope: true,
+      duplicateDetected: false,
+      alreadySubmitted: false,
+      sessionValid: true,
+      formDetected: true,
+      captchaDetected: false,
+      dailyLimitReached: false,
+      hourlyLimitReached: false,
+      autoSubmitOnlyWithClearScope: true,
+      autoSubmitOnlyWithAverageBid: false,
+      rejectUnclearScopeWhenAutopilot: true,
+    });
+
+    expect(result.decision).toBe("AUTO_SUBMIT");
+    expect(result.blockingReasons).toEqual([]);
+  });
+});

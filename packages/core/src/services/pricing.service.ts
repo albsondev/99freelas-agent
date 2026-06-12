@@ -9,6 +9,7 @@ export type PricingInput = {
   averageBidAmount?: number | null;
   budgetMin?: number | null;
   budgetMax?: number | null;
+  minimumPlatformOfferBrl?: number | null;
   minimumProposalAmountBrl: number;
   minimumDailyRateBrl: number;
   defaultHourlyRateBrl: number;
@@ -45,6 +46,7 @@ export class PricingService {
     const estimatedByHours = complexity.baseHours * input.defaultHourlyRateBrl;
     const budgetBasedReference =
       input.budgetMax ?? input.budgetMin ?? null;
+    const minimumPlatformOfferBrl = Math.max(input.minimumPlatformOfferBrl ?? 0, 0);
 
     let baseAmount = estimatedByHours;
     let strategy: PricingResult["strategy"] = "HOURLY_ESTIMATE";
@@ -62,13 +64,23 @@ export class PricingService {
     }
 
     const minimumByDeadline = input.deadlineDays * input.minimumDailyRateBrl;
-    const floor = Math.max(input.minimumProposalAmountBrl, minimumByDeadline);
+    const commercialFloor = Math.max(input.minimumProposalAmountBrl, minimumByDeadline);
 
-    if (baseAmount < floor) {
+    if (discountedAverage !== null) {
+      if (baseAmount < minimumPlatformOfferBrl) {
+        warnings.push(
+          "Valor com desconto precisou subir para respeitar a oferta minima da plataforma.",
+        );
+        baseAmount = minimumPlatformOfferBrl;
+        strategy = "MINIMUM_FLOOR";
+        explanation =
+          "Valor ajustado para respeitar a oferta minima exigida pela plataforma.";
+      }
+    } else if (baseAmount < commercialFloor) {
       warnings.push(
         "Valor base precisou subir para respeitar o piso minimo comercial.",
       );
-      baseAmount = floor;
+      baseAmount = commercialFloor;
       strategy = "MINIMUM_FLOOR";
       explanation =
         "Valor elevado para respeitar o minimo por proposta e o piso diario.";
@@ -96,4 +108,3 @@ export class PricingService {
     };
   }
 }
-

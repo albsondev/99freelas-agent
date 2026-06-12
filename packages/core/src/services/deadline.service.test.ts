@@ -33,5 +33,20 @@ describe("DeadlineService", () => {
     expect(result.needsReview).toBe(true);
     expect(result.deadlineDays).toBeGreaterThanOrEqual(15);
   });
-});
 
+  it("keeps simple wordpress mobile adjustments in a short delivery window", () => {
+    const service = new DeadlineService();
+    const result = service.calculate({
+      title: "Customização de site WordPress (ajuste versão mobile)",
+      description:
+        "Customização simples de site para ajustar a versão mobile e atualizar telefones.",
+      skills: ["WordPress"],
+      averageDeadlineDays: 2,
+      deadlineReductionFactor: 0.75,
+      minDeadlineDays: 2,
+      maxDeadlineDays: 45,
+    });
+
+    expect(result.deadlineDays).toBe(2);
+  });
+});

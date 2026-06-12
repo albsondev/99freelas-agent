@@ -1,17 +1,30 @@
-import type { Opportunity, Proposal, SubmissionStatus } from "@99freelas/core";
-import { ProposalSubmissionGuardrailsService } from "@99freelas/core";
+import type { JsonValue, Opportunity, Proposal, SubmissionStatus } from "@99freelas/core";
+import {
+  ComplianceValidatorService,
+  DeadlineService,
+  PricingService,
+  ProposalSubmissionGuardrailsService,
+  sanitizeProposalText,
+} from "@99freelas/core";
 import {
   type BrowserSessionMode,
+  createLocalTemplateProposalProvider,
+  createProposalLlmProvider,
   createSupabaseAdminClient,
   DailyCounterRepository,
+  inspect99FreelasProposalPage,
+  inspect99FreelasProposalPageViaPython,
   mockSubmit99FreelasProposalViaPython,
   mockSubmit99FreelasProposal,
   OpportunityRepository,
+  type ProposalLlmProvider,
   ProposalRepository,
+  SettingsRepository,
   submit99FreelasProposal,
   submit99FreelasProposalViaPython,
   type ProposalObserverStep,
   type ProposalSubmissionBrowserResult,
+  UserProfileRepository,
 } from "@99freelas/integrations";
 
 import type { WorkerEnv } from "../env.js";
@@ -65,12 +78,22 @@ export async function executeProposalSubmitFlow(input: {
   const proposals = new ProposalRepository(client);
   const opportunities = new OpportunityRepository(client);
   const counters = new DailyCounterRepository(client);
+  const settings = new SettingsRepository(client);
+  const userProfiles = new UserProfileRepository(client);
   const selection = await resolveProposalSelection({
     proposals,
     opportunities,
     proposalId: input.proposalId,
   });
-  const { proposal, opportunity } = selection;
+  const preparedSelection = await refreshProposalUsingLivePageSignals({
+    env: input.env,
+    proposals,
+    opportunities,
+    settings,
+    userProfiles,
+    selection,
+  });
+  const { proposal, opportunity } = preparedSelection;
 
   const today = formatCounterDate(new Date());
   const currentHourName = `real_submissions_hour_${formatCounterHour(new Date())}`;
@@ -214,7 +237,7 @@ export async function executeProposalSubmitFlow(input: {
     guardrails,
     browser: finalBrowser,
     selection: withUpdatedProposalSelection(
-      selection,
+      preparedSelection,
       updated,
       updatedOpportunity ?? undefined,
     ),
@@ -236,12 +259,22 @@ export async function executeProposalObserveFlow(input: {
   const proposals = new ProposalRepository(client);
   const opportunities = new OpportunityRepository(client);
   const counters = new DailyCounterRepository(client);
+  const settings = new SettingsRepository(client);
+  const userProfiles = new UserProfileRepository(client);
   const selection = await resolveProposalSelection({
     proposals,
     opportunities,
     proposalId: input.proposalId,
   });
-  const { proposal, opportunity } = selection;
+  const preparedSelection = await refreshProposalUsingLivePageSignals({
+    env: input.env,
+    proposals,
+    opportunities,
+    settings,
+    userProfiles,
+    selection,
+  });
+  const { proposal, opportunity } = preparedSelection;
   const today = formatCounterDate(new Date());
   const currentHourName = `real_submissions_hour_${formatCounterHour(new Date())}`;
   const [dailyCounter, hourlyCounter] = await Promise.all([
@@ -340,7 +373,247 @@ export async function executeProposalObserveFlow(input: {
     liveSubmitted: false,
     guardrails,
     browser,
-    selection: withUpdatedProposalSelection(selection, updated),
+    selection: withUpdatedProposalSelection(preparedSelection, updated),
+  };
+}
+
+async function refreshProposalUsingLivePageSignals(input: {
+  env: WorkerEnv;
+  proposals: ProposalRepository;
+  opportunities: OpportunityRepository;
+  settings: SettingsRepository;
+  userProfiles: UserProfileRepository;
+  selection: ProposalSelectionResult;
+}): Promise<ProposalSelectionResult> {
+  let inspected =
+    input.env.BROWSER_AUTOMATION_RUNTIME === "python-playwright"
+      ? await inspect99FreelasProposalPageViaPython({
+          browserName: input.env.PYTHON_BROWSER_NAME,
+          headless: true,
+          profileDir: input.env.PYTHON_BROWSER_PROFILE_DIR,
+          proposalPageUrl: input.selection.opportunity.url,
+          pythonExecutable: input.env.PYTHON_EXECUTABLE,
+          screenshotDir: input.env.BROWSER_SCREENSHOT_DIR,
+          storageStatePath: input.env.PYTHON_BROWSER_STORAGE_STATE_PATH,
+          timeoutMs: 90_000,
+        })
+      : await inspect99FreelasProposalPage({
+          headless: true,
+          proposalPageUrl: input.selection.opportunity.url,
+          sessionMode: input.env.BROWSER_SESSION_MODE,
+          storageStatePath: input.env.BROWSER_STORAGE_STATE_PATH,
+          userDataDir: input.env.BROWSER_USER_DATA_DIR,
+          chromeProfileDirectory: input.env.BROWSER_CHROME_PROFILE_DIRECTORY,
+          timeoutMs: 90_000,
+        });
+
+  if (
+    inspected.page.averageBidAmount === null &&
+    inspected.page.averageDeadlineDays === null
+  ) {
+    const fallbackBrowser =
+      input.env.BROWSER_AUTOMATION_RUNTIME === "python-playwright"
+        ? await mockSubmit99FreelasProposalViaPython({
+            amount: input.selection.proposal.amount,
+            browserName: input.env.PYTHON_BROWSER_NAME,
+            deadlineDays: input.selection.proposal.deadlineDays,
+            detailsText: input.selection.proposal.detailsText,
+            headless: true,
+            profileDir: input.env.PYTHON_BROWSER_PROFILE_DIR,
+            proposalPageUrl: input.selection.opportunity.url,
+            pythonExecutable: input.env.PYTHON_EXECUTABLE,
+            screenshotDir: input.env.BROWSER_SCREENSHOT_DIR,
+            storageStatePath: input.env.PYTHON_BROWSER_STORAGE_STATE_PATH,
+            timeoutMs: 90_000,
+          })
+        : await mockSubmit99FreelasProposal({
+            amount: input.selection.proposal.amount,
+            deadlineDays: input.selection.proposal.deadlineDays,
+            detailsText: input.selection.proposal.detailsText,
+            headless: true,
+            proposalPageUrl: input.selection.opportunity.url,
+            sessionMode: input.env.BROWSER_SESSION_MODE,
+            storageStatePath: input.env.BROWSER_STORAGE_STATE_PATH,
+            userDataDir: input.env.BROWSER_USER_DATA_DIR,
+            chromeProfileDirectory: input.env.BROWSER_CHROME_PROFILE_DIRECTORY,
+            timeoutMs: 90_000,
+          });
+
+    inspected = {
+      ...inspected,
+      page: fallbackBrowser.page,
+      submitButtonVisible: fallbackBrowser.submitButtonVisible,
+    };
+  }
+
+  if (
+    inspected.page.averageBidAmount === null &&
+    inspected.page.averageDeadlineDays === null
+  ) {
+    throw new Error(
+      "Nao foi possivel validar media de propostas e prazo medio na pagina autenticada antes do preenchimento.",
+    );
+  }
+
+  const currentOpportunity = input.selection.opportunity;
+  const currentProposal = input.selection.proposal;
+
+  const updatedOpportunity =
+    inspected.page.averageBidAmount !== currentOpportunity.averageBidAmount ||
+    inspected.page.averageDeadlineDays !== currentOpportunity.averageDeadlineDays
+      ? await input.opportunities.update(currentOpportunity.id, {
+          average_bid_amount:
+            inspected.page.averageBidAmount ?? currentOpportunity.averageBidAmount ?? null,
+          average_deadline_days:
+            inspected.page.averageDeadlineDays ?? currentOpportunity.averageDeadlineDays ?? null,
+          raw_payload: {
+            ...asJsonObject(currentOpportunity.rawPayload),
+            submissionPreparation: {
+              inspectedAt: new Date().toISOString(),
+              proposalPageSnapshot: inspected.page,
+            },
+          },
+        })
+      : currentOpportunity;
+
+  const [pricingSetting, deadlineSetting, freelancerProfile] = await Promise.all([
+    input.settings.getByKey("pricing.defaults"),
+    input.settings.getByKey("deadline.defaults"),
+    input.userProfiles.getPrimaryProfile(),
+  ]);
+
+  const pricingDefaults = asJsonObject(pricingSetting?.value);
+  const deadlineDefaults = asJsonObject(deadlineSetting?.value);
+  const minimumProposalAmountBrl =
+    freelancerProfile?.minimumAmountBrl ??
+    readNumberSetting(
+      pricingDefaults,
+      "minimumProposalAmountBrl",
+      input.env.MIN_PROPOSAL_AMOUNT_BRL,
+    );
+  const minimumDailyRateBrl =
+    freelancerProfile?.minimumDailyRateBrl ??
+    readNumberSetting(
+      pricingDefaults,
+      "minimumDailyRateBrl",
+      input.env.MIN_DAILY_RATE_BRL,
+    );
+  const defaultHourlyRateBrl =
+    freelancerProfile?.defaultHourlyRateBrl ??
+    readNumberSetting(
+      pricingDefaults,
+      "defaultHourlyRateBrl",
+      input.env.DEFAULT_HOURLY_RATE_BRL,
+    );
+
+  const deadline = new DeadlineService().calculate({
+    title: updatedOpportunity.title ?? "",
+    description: updatedOpportunity.description ?? "",
+    category: updatedOpportunity.category ?? "",
+    skills: updatedOpportunity.skills,
+    averageDeadlineDays: updatedOpportunity.averageDeadlineDays ?? null,
+    deadlineReductionFactor: readNumberSetting(
+      deadlineDefaults,
+      "reductionFactor",
+      input.env.DEADLINE_REDUCTION_FACTOR,
+    ),
+    minDeadlineDays: readIntegerSetting(
+      deadlineDefaults,
+      "minDeadlineDays",
+      input.env.MIN_DEADLINE_DAYS,
+    ),
+    maxDeadlineDays: readIntegerSetting(
+      deadlineDefaults,
+      "maxDeadlineDays",
+      input.env.MAX_DEADLINE_DAYS,
+    ),
+  });
+
+  const pricing = new PricingService().calculate({
+    title: updatedOpportunity.title ?? "",
+    description: updatedOpportunity.description ?? "",
+    category: updatedOpportunity.category ?? "",
+    skills: updatedOpportunity.skills,
+    deadlineDays: deadline.deadlineDays,
+    averageBidAmount: updatedOpportunity.averageBidAmount ?? null,
+    budgetMin: updatedOpportunity.budgetMin ?? null,
+    budgetMax: updatedOpportunity.budgetMax ?? null,
+    minimumPlatformOfferBrl: extractMinimumOfferAmount(updatedOpportunity.rawPayload),
+    minimumProposalAmountBrl,
+    minimumDailyRateBrl,
+    defaultHourlyRateBrl,
+    priceDiscountFactor: readNumberSetting(
+      pricingDefaults,
+      "discountFactor",
+      input.env.PRICE_DISCOUNT_FACTOR,
+    ),
+  });
+
+  const shouldRegenerate =
+    currentProposal.amount !== pricing.amount ||
+    currentProposal.deadlineDays !== deadline.deadlineDays ||
+    currentOpportunity.averageBidAmount !== updatedOpportunity.averageBidAmount ||
+    currentOpportunity.averageDeadlineDays !== updatedOpportunity.averageDeadlineDays;
+
+  if (!shouldRegenerate) {
+    return {
+      proposal: currentProposal,
+      opportunity: updatedOpportunity,
+      reasons: [
+        ...input.selection.reasons,
+        "Sinais comerciais da pagina autenticada validados antes do preenchimento.",
+      ],
+    };
+  }
+
+  const llm = resolveProposalLlmProvider(input.env);
+  const generated = await llm.generate({
+    opportunity: updatedOpportunity,
+    amount: pricing.amount,
+    deadlineDays: deadline.deadlineDays,
+    pricingExplanation: pricing.explanation,
+    deadlineExplanation: deadline.explanation,
+    matchedSkills: updatedOpportunity.matchedSkills,
+    missingSkills: updatedOpportunity.missingSkills,
+    decisionReasons: updatedOpportunity.decisionReasons,
+    riskFlags: updatedOpportunity.riskFlags,
+    freelancerProfile,
+  });
+
+  const compliance = new ComplianceValidatorService().validate({
+    detailsText: sanitizeProposalText(generated.detailsText),
+    skills: updatedOpportunity.skills,
+    ...(withOptional("title", updatedOpportunity.title)),
+    ...(withOptional("description", updatedOpportunity.description)),
+  });
+
+  const updatedProposal = await input.proposals.update(currentProposal.id, {
+    amount: pricing.amount,
+    deadline_days: deadline.deadlineDays,
+    details_text: sanitizeProposalText(generated.detailsText),
+    technical_summary: generated.technicalSummary,
+    assumptions: generated.assumptions,
+    questions: generated.questions,
+    risks: generated.risks,
+    llm_provider: generated.llmProvider,
+    llm_model: generated.llmModel,
+    llm_prompt_version: generated.llmPromptVersion,
+    quality_score: generated.qualityScore,
+    compliance_status: compliance.status,
+    compliance_flags: compliance.flags,
+    pricing_strategy: pricing.strategy,
+    pricing_explanation: pricing.explanation,
+    deadline_strategy: deadline.strategy,
+    deadline_explanation: deadline.explanation,
+  });
+
+  return {
+    proposal: updatedProposal,
+    opportunity: updatedOpportunity,
+    reasons: [
+      ...input.selection.reasons,
+      "Proposta recalculada com base nos sinais reais da pagina autenticada.",
+    ],
   };
 }
 
@@ -513,6 +786,72 @@ function assertControlledBrowserRuntime(
       'Para automacao controlada do worker, troque para BROWSER_SESSION_MODE="dedicated-profile".',
     ].join(" "),
   );
+}
+
+function resolveProposalLlmProvider(env: WorkerEnv): ProposalLlmProvider {
+  if (env.LLM_PROVIDER === "openai" && env.OPENAI_API_KEY) {
+    return createProposalLlmProvider({
+      provider: "openai",
+      openAiApiKey: env.OPENAI_API_KEY,
+      openAiModel: env.OPENAI_MODEL,
+      temperature: env.LLM_TEMPERATURE,
+      maxOutputTokens: env.LLM_MAX_TOKENS,
+    });
+  }
+
+  return createLocalTemplateProposalProvider();
+}
+
+function asJsonObject(value: JsonValue | null | undefined): Record<string, JsonValue> {
+  if (typeof value === "object" && value !== null && !Array.isArray(value)) {
+    return value as Record<string, JsonValue>;
+  }
+
+  return {};
+}
+
+function readNumberSetting(
+  source: Record<string, JsonValue>,
+  key: string,
+  fallback: number,
+): number {
+  const value = source[key];
+  return typeof value === "number" ? value : fallback;
+}
+
+function readIntegerSetting(
+  source: Record<string, JsonValue>,
+  key: string,
+  fallback: number,
+): number {
+  return Math.round(readNumberSetting(source, key, fallback));
+}
+
+function extractMinimumOfferAmount(rawPayload: JsonValue | null | undefined): number | null {
+  const root = asJsonObject(rawPayload);
+  const parse = asJsonObject(root.parse);
+  const submissionPreparation = asJsonObject(root.submissionPreparation);
+  const proposalPageSnapshot = asJsonObject(submissionPreparation.proposalPageSnapshot);
+
+  const candidates = [
+    proposalPageSnapshot.minimumOfferAmount,
+    parse.minimumOfferAmount,
+  ];
+
+  for (const candidate of candidates) {
+    if (typeof candidate === "number" && Number.isFinite(candidate)) {
+      return candidate;
+    }
+  }
+
+  return null;
+}
+
+function withOptional<TKey extends string, TValue>(
+  key: TKey,
+  value: TValue | undefined,
+): { [key in TKey]?: TValue } {
+  return value === undefined ? {} : { [key]: value } as { [key in TKey]?: TValue };
 }
 
 async function incrementCounter(

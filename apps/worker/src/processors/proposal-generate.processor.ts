@@ -139,6 +139,7 @@ export async function processProposalGenerateJob(
     averageBidAmount: opportunity.averageBidAmount ?? null,
     budgetMin: opportunity.budgetMin ?? null,
     budgetMax: opportunity.budgetMax ?? null,
+    minimumPlatformOfferBrl: extractMinimumOfferAmount(opportunity.rawPayload),
     minimumProposalAmountBrl,
     minimumDailyRateBrl,
     defaultHourlyRateBrl,
@@ -309,6 +310,26 @@ function readIntegerSetting(
   fallback: number,
 ): number {
   return Math.round(readNumberSetting(source, key, fallback));
+}
+
+function extractMinimumOfferAmount(rawPayload: JsonValue | null | undefined): number | null {
+  const root = asJsonObject(rawPayload);
+  const parse = asJsonObject(root.parse);
+  const submissionPreparation = asJsonObject(root.submissionPreparation);
+  const proposalPageSnapshot = asJsonObject(submissionPreparation.proposalPageSnapshot);
+
+  const candidates = [
+    proposalPageSnapshot.minimumOfferAmount,
+    parse.minimumOfferAmount,
+  ];
+
+  for (const candidate of candidates) {
+    if (typeof candidate === "number" && Number.isFinite(candidate)) {
+      return candidate;
+    }
+  }
+
+  return null;
 }
 
 function mergeStrings(...groups: string[][]): string[] {
