@@ -236,12 +236,29 @@ async function runWithDaemonFallback<T>(
   payload: unknown,
   timeoutMs: number,
 ): Promise<T> {
+  if (command !== "auth") {
+    return runPythonCommandDirect<T>(command, payload, timeoutMs);
+  }
+
+  if (wantsVisibleBrowser(payload)) {
+    return runPythonCommandDirect<T>(command, payload, timeoutMs);
+  }
+
   try {
     await ensurePythonRunnerDaemon(payload as PythonRunnerConfig);
     return await sendDaemonCommand<T>(command, payload, timeoutMs);
   } catch (error) {
     return runPythonCommandDirect<T>(command, payload, timeoutMs, error);
   }
+}
+
+function wantsVisibleBrowser(payload: unknown): boolean {
+  return (
+    typeof payload === "object" &&
+    payload !== null &&
+    "headless" in payload &&
+    payload.headless === false
+  );
 }
 
 async function isDaemonHealthy(input: PythonRunnerConfig): Promise<boolean> {

@@ -106,7 +106,7 @@ export async function executeProposalSubmitFlow(input: {
     amount: proposal.amount,
     deadlineDays: proposal.deadlineDays,
     detailsText: proposal.detailsText,
-    headless: input.env.BROWSER_HEADLESS,
+    headless: input.observeBrowser ? false : input.env.BROWSER_HEADLESS,
     proposalPageUrl: opportunity.url,
     beforeScreenshotPath: `${input.env.BROWSER_SCREENSHOT_DIR}/proposal-submit-before-${proposal.id}.png`,
     afterScreenshotPath: `${input.env.BROWSER_SCREENSHOT_DIR}/proposal-submit-after-${proposal.id}.png`,

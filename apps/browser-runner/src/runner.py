@@ -318,7 +318,7 @@ async def authenticate_direct(payload: dict[str, Any]) -> dict[str, Any]:
 
 async def session_check_direct(payload: dict[str, Any]) -> dict[str, Any]:
     async with async_playwright() as playwright:
-        context = await launch_persistent_context(
+        browser, context = await launch_direct_context(
             playwright,
             payload,
             headless=bool(payload.get("headless", True)),
@@ -329,11 +329,13 @@ async def session_check_direct(payload: dict[str, Any]) -> dict[str, Any]:
             return await inspect_session(context, page, payload)
         finally:
             await context.close()
+            if browser is not None:
+                await browser.close()
 
 
 async def proposal_prefill_direct(payload: dict[str, Any]) -> dict[str, Any]:
     async with async_playwright() as playwright:
-        context = await launch_persistent_context(
+        browser, context = await launch_direct_context(
             playwright,
             payload,
             headless=bool(payload.get("headless", False)),
@@ -343,11 +345,13 @@ async def proposal_prefill_direct(payload: dict[str, Any]) -> dict[str, Any]:
             return await proposal_prefill_core(context, page, payload)
         finally:
             await context.close()
+            if browser is not None:
+                await browser.close()
 
 
 async def proposal_page_inspect_direct(payload: dict[str, Any]) -> dict[str, Any]:
     async with async_playwright() as playwright:
-        context = await launch_persistent_context(
+        browser, context = await launch_direct_context(
             playwright,
             payload,
             headless=bool(payload.get("headless", False)),
@@ -357,11 +361,13 @@ async def proposal_page_inspect_direct(payload: dict[str, Any]) -> dict[str, Any
             return await inspect_proposal_page_core(page, payload)
         finally:
             await context.close()
+            if browser is not None:
+                await browser.close()
 
 
 async def project_list_collect_direct(payload: dict[str, Any]) -> dict[str, Any]:
     async with async_playwright() as playwright:
-        context = await launch_persistent_context(
+        browser, context = await launch_direct_context(
             playwright,
             payload,
             headless=bool(payload.get("headless", False)),
@@ -371,11 +377,13 @@ async def project_list_collect_direct(payload: dict[str, Any]) -> dict[str, Any]
             return await collect_project_listing_core(page, payload)
         finally:
             await context.close()
+            if browser is not None:
+                await browser.close()
 
 
 async def project_page_scrape_direct(payload: dict[str, Any]) -> dict[str, Any]:
     async with async_playwright() as playwright:
-        context = await launch_persistent_context(
+        browser, context = await launch_direct_context(
             playwright,
             payload,
             headless=bool(payload.get("headless", False)),
@@ -385,11 +393,13 @@ async def project_page_scrape_direct(payload: dict[str, Any]) -> dict[str, Any]:
             return await scrape_project_page_core(page, payload)
         finally:
             await context.close()
+            if browser is not None:
+                await browser.close()
 
 
 async def proposal_submit_direct(payload: dict[str, Any]) -> dict[str, Any]:
     async with async_playwright() as playwright:
-        context = await launch_persistent_context(
+        browser, context = await launch_direct_context(
             playwright,
             payload,
             headless=bool(payload.get("headless", False)),
@@ -399,6 +409,8 @@ async def proposal_submit_direct(payload: dict[str, Any]) -> dict[str, Any]:
             return await proposal_submit_core(context, page, payload)
         finally:
             await context.close()
+            if browser is not None:
+                await browser.close()
 
 
 async def authenticate_with_context(
@@ -460,9 +472,43 @@ async def launch_persistent_context(
         "headless": headless,
     }
     if browser_name == "chromium":
-        launch_args["args"] = ["--disable-blink-features=AutomationControlled"]
+        launch_args["args"] = [
+            "--disable-blink-features=AutomationControlled",
+            "--hide-crash-restore-bubble",
+            "--disable-session-crashed-bubble",
+        ]
 
     return await browser_type.launch_persistent_context(**launch_args)
+
+
+async def launch_direct_context(
+    playwright: Any,
+    payload: dict[str, Any],
+    *,
+    headless: bool,
+) -> tuple[Any, BrowserContext]:
+    browser_name = payload.get("browserName", "chromium")
+    browser_type = getattr(playwright, browser_name)
+
+    launch_args: dict[str, Any] = {
+        "headless": headless,
+    }
+    if browser_name == "chromium":
+        launch_args["args"] = [
+            "--disable-blink-features=AutomationControlled",
+            "--hide-crash-restore-bubble",
+            "--disable-session-crashed-bubble",
+        ]
+
+    browser = await browser_type.launch(**launch_args)
+
+    context_args: dict[str, Any] = {}
+    storage_state_path = Path(payload["storageStatePath"]).resolve()
+    if storage_state_path.exists():
+        context_args["storage_state"] = str(storage_state_path)
+
+    context = await browser.new_context(**context_args)
+    return browser, context
 
 
 async def get_or_create_context_page(context: BrowserContext) -> Page:
@@ -523,10 +569,7 @@ async def inspect_proposal_page_core(page: Page, payload: dict[str, Any]) -> dic
         wait_until="domcontentloaded",
         timeout=payload_timeout(payload),
     )
-    await page.locator("#proposal-form, form[action*='proposal'], #oferta").first.wait_for(
-        state="visible",
-        timeout=payload_timeout(payload),
-    )
+    await wait_for_proposal_form(page, payload_timeout(payload))
     body_text = await wait_for_market_signals(page, payload_timeout(payload))
 
     return {
@@ -750,10 +793,7 @@ async def open_and_fill_proposal(page: Page, payload: dict[str, Any]) -> None:
         wait_until="domcontentloaded",
         timeout=payload_timeout(payload),
     )
-    await page.locator("#proposal-form, form[action*='proposal'], #oferta").first.wait_for(
-        state="visible",
-        timeout=payload_timeout(payload),
-    )
+    await wait_for_proposal_form(page, payload_timeout(payload))
     await page.locator("#oferta").fill(format_money_input(payload["amount"]))
     await emit_step(payload, "amount-filled", "Campo de oferta preenchido.", page.url)
     await maybe_wait(payload.get("observer", {}).get("stepDelayMs"))
@@ -791,6 +831,24 @@ async def emit_step(
 
 async def safe_body_text(page: Page) -> str:
     return await page.locator("body").inner_text()
+
+
+async def wait_for_proposal_form(page: Page, timeout_ms: int) -> None:
+    try:
+        await page.locator("#proposal-form, form[action*='proposal'], #oferta").first.wait_for(
+            state="visible",
+            timeout=timeout_ms,
+        )
+    except Exception as exc:
+        body_text = await safe_body_text(page)
+        compact_text = " ".join(body_text.split())[:500]
+        raise RuntimeError(
+            (
+                "Formulario de proposta nao ficou visivel. "
+                f"URL atual: {page.url}. "
+                f"Trecho carregado: {compact_text}"
+            )
+        ) from exc
 
 
 async def wait_for_market_signals(page: Page, timeout_ms: int) -> str:
