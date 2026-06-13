@@ -741,10 +741,63 @@ async def collect_project_listing_core(page: Page, payload: dict[str, Any]) -> d
         # Pass seen URLs as a plain list so the JS context can build its own Set.
         # Using a Set directly is not serialisable across the evaluate boundary.
         page_items = await page.evaluate(
-            r"""([limit, seenList]) => {
+            r"""([limit, seenList, sourceKind]) => {
           const seen = new Set(seenList);
           const anchors = Array.from(document.querySelectorAll('a[href*="/project/"]'));
           const items = [];
+          const statusOnlyPatterns = [
+            /sua proposta/i,
+            /proposta enviada/i,
+            /melhorar proposta/i,
+            /fazer pergunta/i,
+            /nova mensagem/i,
+            /mensagem recebida/i,
+            /respondeu/i,
+            /resposta/i,
+            /coment[aá]rio/i,
+            /status/i,
+            /foi selecionad/i,
+            /foi cancelad/i,
+            /foi encerrad/i,
+            /convite/i,
+            /intera(?:ç|c)[aã]o/i,
+            /visualizou sua proposta/i,
+          ];
+          const opportunityPatterns = [
+            /novo projeto/i,
+            /projeto recomendado/i,
+            /recomendado para voc[eê]/i,
+            /desenvolvimento web/i,
+            /web, mobile/i,
+            /or[cç]amento/i,
+            /propostas?/i,
+            /interessados?/i,
+            /categoria/i,
+            /prazo/i,
+          ];
+
+          function isOpportunityNotification(anchor) {
+            if (sourceKind !== 'recommended-notifications') {
+              return true;
+            }
+
+            const container = anchor.closest('li, article, .media, .media-body, .notification, .notificacao, .panel, .box') || anchor.parentElement;
+            const contextText = (container?.textContent || anchor.textContent || '').replace(/\s+/g, ' ').trim();
+
+            if (!contextText) {
+              return false;
+            }
+
+            if (statusOnlyPatterns.some((pattern) => pattern.test(contextText))) {
+              return false;
+            }
+
+            if (opportunityPatterns.some((pattern) => pattern.test(contextText))) {
+              return true;
+            }
+
+            return /(?:site|landing page|wordpress|react|next\.js|vue\.js|php|node\.js|bug|ajuste|sistema|dashboard|api|integra)/i.test(contextText);
+          }
 
           for (const anchor of anchors) {
             const href = anchor.getAttribute('href') || '';
@@ -766,6 +819,10 @@ async def collect_project_listing_core(page: Page, payload: dict[str, Any]) -> d
               continue;
             }
 
+            if (!isOpportunityNotification(anchor)) {
+              continue;
+            }
+
             items.push({ url: absoluteUrl, title });
             seen.add(absoluteUrl);
 
@@ -776,7 +833,7 @@ async def collect_project_listing_core(page: Page, payload: dict[str, Any]) -> d
 
           return items;
         }""",
-            [limit, list(seen_urls)],
+            [limit, list(seen_urls), source_kind],
         )
 
         page_signature = "|".join(
