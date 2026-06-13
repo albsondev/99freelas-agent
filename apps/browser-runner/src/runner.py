@@ -352,9 +352,9 @@ async def session_check_direct(payload: dict[str, Any]) -> dict[str, Any]:
             await page.goto(DASHBOARD_URL, wait_until="domcontentloaded", timeout=payload_timeout(payload))
             return await inspect_session(context, page, payload)
         finally:
-            await context.close()
+            await safe_close_context(context)
             if browser is not None:
-                await browser.close()
+                await safe_close_browser(browser)
 
 
 async def proposal_prefill_direct(payload: dict[str, Any]) -> dict[str, Any]:
@@ -368,9 +368,9 @@ async def proposal_prefill_direct(payload: dict[str, Any]) -> dict[str, Any]:
             page = await get_or_create_context_page(context)
             return await proposal_prefill_core(context, page, payload)
         finally:
-            await context.close()
+            await safe_close_context(context)
             if browser is not None:
-                await browser.close()
+                await safe_close_browser(browser)
 
 
 async def proposal_page_inspect_direct(payload: dict[str, Any]) -> dict[str, Any]:
@@ -384,9 +384,9 @@ async def proposal_page_inspect_direct(payload: dict[str, Any]) -> dict[str, Any
             page = await get_or_create_context_page(context)
             return await inspect_proposal_page_core(page, payload)
         finally:
-            await context.close()
+            await safe_close_context(context)
             if browser is not None:
-                await browser.close()
+                await safe_close_browser(browser)
 
 
 async def project_list_collect_direct(payload: dict[str, Any]) -> dict[str, Any]:
@@ -1013,6 +1013,20 @@ async def emit_step(
 
 async def safe_body_text(page: Page) -> str:
     return await page.locator("body").inner_text()
+
+
+async def safe_close_context(context: BrowserContext) -> None:
+    try:
+        await context.close()
+    except Exception:
+        return
+
+
+async def safe_close_browser(browser: Any) -> None:
+    try:
+        await browser.close()
+    except Exception:
+        return
 
 
 async def wait_for_proposal_form(page: Page, timeout_ms: int) -> None:
