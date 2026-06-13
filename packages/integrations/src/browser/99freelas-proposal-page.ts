@@ -7,6 +7,7 @@ export type ProposalPageSnapshot = {
   availableConnections: number | null;
   requiredConnections: number | null;
   hasProposalForm: boolean;
+  hasExistingProposal: boolean;
   hasQuestionChannel: boolean;
 };
 
@@ -23,13 +24,15 @@ export function parse99FreelasProposalPage(snapshot: string): ProposalPageSnapsh
     snapshot.includes('textbox "Sua oferta"') || snapshot.includes("Sua oferta");
   const hasDetailsField =
     snapshot.includes('textbox "Detalhes"') || snapshot.includes("Detalhes");
+  const hasImproveProposalAction =
+    snapshot.includes('heading "Melhorar proposta"') ||
+    snapshot.includes('button "Melhorar proposta"') ||
+    snapshot.includes("Melhorar proposta");
   const hasProposalAction =
     snapshot.includes('heading "Enviar proposta"') ||
     snapshot.includes('button "Enviar proposta"') ||
-    snapshot.includes('heading "Melhorar proposta"') ||
-    snapshot.includes('button "Melhorar proposta"') ||
     snapshot.includes("Enviar proposta") ||
-    snapshot.includes("Melhorar proposta");
+    hasImproveProposalAction;
 
   return {
     averageBidAmount: averageBidLine ? normalizeCurrencyBRL(averageBidLine) : null,
@@ -46,6 +49,7 @@ export function parse99FreelasProposalPage(snapshot: string): ProposalPageSnapsh
       /Esta proposta requer\s+(\d+)\s+conex(?:ão|ões)/i,
     ),
     hasProposalForm: hasProposalAction && hasOfferField && hasDetailsField,
+    hasExistingProposal: hasImproveProposalAction,
     hasQuestionChannel:
       snapshot.includes('link "Fazer pergunta"') ||
       snapshot.includes("Fazer pergunta") ||

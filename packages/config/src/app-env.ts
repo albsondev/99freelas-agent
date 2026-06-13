@@ -70,7 +70,7 @@ export const appEnvSchema = z.object({
   MAX_AUTOPILOT_SUBMISSIONS_PER_DAY: z.coerce.number().int().nonnegative().default(15),
   MAX_AUTOPILOT_SUBMISSIONS_PER_HOUR: z.coerce.number().int().nonnegative().default(4),
   MAX_FAILED_SUBMISSIONS_PER_DAY: z.coerce.number().int().nonnegative().default(10),
-  MAX_HUNT_PAGES: z.coerce.number().int().positive().default(7),
+  MAX_HUNT_PAGES: z.coerce.number().int().positive().default(15),
   MAX_PROJECTS_FETCHED_PER_HOUR: z.coerce.number().int().nonnegative().default(30),
   PRICE_DISCOUNT_FACTOR: z.coerce.number().min(0).default(0.5),
   MIN_PROPOSAL_AMOUNT_BRL: z.coerce.number().nonnegative().default(150),

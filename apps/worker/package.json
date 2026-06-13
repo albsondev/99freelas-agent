@@ -16,6 +16,7 @@
     "source:recommended": "tsx src/index.ts source:recommended",
     "source:hunt": "tsx src/index.ts source:hunt",
     "source:smart": "tsx src/index.ts source:smart",
+    "reprocess:recent": "tsx src/index.ts reprocess:recent",
     "autopilot:loop": "tsx src/index.ts autopilot:loop",
     "proposal:prefill": "tsx src/index.ts proposal:prefill",
     "proposal:observe": "tsx src/index.ts proposal:observe",

@@ -15,6 +15,7 @@ import type {
 
 const LOCAL_TEMPLATE_MODEL = "local-template-v1";
 const LOCAL_TEMPLATE_PROMPT_VERSION = "proposal-template-v1";
+const MAX_DETAILS_TEXT_LENGTH = 1200;
 
 type ProposalVoiceStyle =
   | "consultivo"
@@ -93,7 +94,7 @@ function buildLocalTemplateProposal(
     buildRiskControlParagraph(input, cautionMode, voiceStyle),
   ];
 
-  const detailsText = sanitizeProposalText(paragraphs.join("\n\n"));
+  const detailsText = fitDetailsText(paragraphs);
   const assumptions = buildAssumptions(input, projectType);
   const questions = buildQuestions(input, projectType);
   const risks = buildRisks(input, cautionMode);
@@ -221,7 +222,10 @@ function buildContextParagraph(
   voiceStyle: ProposalVoiceStyle,
   clientGoal: string,
 ): string {
-  const title = compactWhitespace(input.opportunity.title ?? "este projeto");
+  const title = truncateText(
+    compactWhitespace(input.opportunity.title ?? "este projeto"),
+    120,
+  );
   const skillBlock = joinListForSentence(focusSkills.slice(0, 3));
   const openings: Record<ProposalVoiceStyle, string> = {
     consultivo: `Li com atenção o projeto ${title} e faz bastante sentido conduzir isso com um caminho bem prático, principalmente para ${clientGoal}.`,
@@ -424,4 +428,37 @@ function joinListForSentence(items: string[]): string {
   }
 
   return `${items.slice(0, -1).join(", ")} e ${items.at(-1)}`;
+}
+
+function fitDetailsText(paragraphs: string[]): string {
+  const fullText = sanitizeProposalText(paragraphs.join("\n\n"));
+  if (fullText.length <= MAX_DETAILS_TEXT_LENGTH) {
+    return fullText;
+  }
+
+  const shortenedParagraphs = [
+    truncateText(paragraphs[0] ?? "", 320),
+    truncateText(paragraphs[1] ?? "", 420),
+    truncateText(paragraphs[2] ?? "", 240),
+  ].filter(Boolean);
+  const shortenedText = sanitizeProposalText(shortenedParagraphs.join("\n\n"));
+
+  if (shortenedText.length <= MAX_DETAILS_TEXT_LENGTH) {
+    return shortenedText;
+  }
+
+  return truncateText(shortenedText, MAX_DETAILS_TEXT_LENGTH);
+}
+
+function truncateText(value: string, maxLength: number): string {
+  const normalized = compactWhitespace(value);
+
+  if (normalized.length <= maxLength) {
+    return normalized;
+  }
+
+  const cutPoint = normalized.lastIndexOf(" ", maxLength - 4);
+  const safeCut = cutPoint >= Math.floor(maxLength * 0.6) ? cutPoint : maxLength - 3;
+
+  return `${normalized.slice(0, safeCut).trim()}...`;
 }

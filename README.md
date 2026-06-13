@@ -67,7 +67,7 @@ O clique real ficou preparado, mas so pode acontecer quando todas estas condicoe
 - proposta com `compliance_status = APPROVED`
 - oportunidade com decisao `AUTO_SUBMIT` e score acima do minimo configurado
 - limites horario e diario abaixo do teto
-- limite de paginação (`MAX_HUNT_PAGES=7` por padrão) respeitado na caça pública
+- limite de paginação (`MAX_HUNT_PAGES=15` por padrão) respeitado na caça pública
 - comando executado com `--live --confirm-live-submit`
 
 Na pratica, a autenticacao automatizada pode ser bloqueada pelo Cloudflare. Quando isso acontecer, agora existem duas trilhas:

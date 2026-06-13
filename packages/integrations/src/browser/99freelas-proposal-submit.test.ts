@@ -30,6 +30,7 @@ Outro texto irrelevante.
           availableConnections: 250,
           requiredConnections: 1,
           hasProposalForm: true,
+          hasExistingProposal: false,
           hasQuestionChannel: true,
         },
         submitButtonVisible: true,
@@ -49,6 +50,7 @@ Outro texto irrelevante.
           availableConnections: 0,
           requiredConnections: 1,
           hasProposalForm: false,
+          hasExistingProposal: false,
           hasQuestionChannel: true,
         },
         submitButtonVisible: false,
@@ -61,5 +63,25 @@ Outro texto irrelevante.
       "Texto da proposta ficou curto demais para envio seguro.",
       "Quantidade de conexoes disponiveis nao cobre a proposta.",
     ]);
+  });
+
+  it("blocks submission when the page indicates an existing proposal", () => {
+    expect(
+      assessSubmissionReadiness({
+        detailsLength: 420,
+        page: {
+          averageBidAmount: 565.33,
+          averageDeadlineDays: 7,
+          minimumOfferAmount: null,
+          availableConnections: 250,
+          requiredConnections: 1,
+          hasProposalForm: true,
+          hasExistingProposal: true,
+          hasQuestionChannel: true,
+        },
+        submitButtonVisible: true,
+        submitButtonEnabled: true,
+      }),
+    ).toContain("Projeto ja possui proposta enviada anteriormente.");
   });
 });

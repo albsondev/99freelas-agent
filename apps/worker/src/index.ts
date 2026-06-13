@@ -24,6 +24,7 @@ import {
   executeProposalObserveFlow,
   executeProposalSubmitFlow,
 } from "./commands/proposal-submit.command.js";
+import { reprocessRecentOpportunities } from "./commands/reprocess-recent.command.js";
 import { loadWorkerEnv } from "./env.js";
 import { createInlineOpportunityPipelineProducer } from "./processors/inline-opportunity-pipeline.js";
 import { processOpportunityFetchJob } from "./processors/opportunity-fetch.processor.js";
@@ -327,6 +328,48 @@ async function main() {
           service: "worker",
           command,
           status: "loop-stopped",
+          result,
+        },
+        null,
+        2,
+      ),
+    );
+    return;
+  }
+
+  if (command === "reprocess:recent") {
+    const client = createSupabaseAdminClient({
+      supabaseUrl: env.SUPABASE_URL,
+      supabaseKey: env.SUPABASE_SERVICE_ROLE_KEY,
+    });
+    const runs = new AutomationRunRepository(client);
+    const opportunities = new OpportunityRepository(client);
+    const proposals = new ProposalRepository(client);
+    const settings = new SettingsRepository(client);
+    const userProfiles = new UserProfileRepository(client);
+    const llm = resolveProposalLlmProvider(env);
+    const result = await reprocessRecentOpportunities(
+      env,
+      {
+        opportunities,
+        proposals,
+        runs,
+        settings,
+        userProfiles,
+        llm,
+      },
+      {
+        hours: readNumberOption("--hours") ?? 48,
+        limit: readNumberOption("--limit") ?? 250,
+      },
+    );
+
+    console.log(
+      JSON.stringify(
+        {
+          service: "worker",
+          command,
+          status: "reprocessed",
           result,
         },
         null,

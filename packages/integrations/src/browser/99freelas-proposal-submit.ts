@@ -358,6 +358,10 @@ export function assessSubmissionReadiness(input: {
     blockingReasons.push("Formulario de proposta nao foi encontrado.");
   }
 
+  if (input.page.hasExistingProposal) {
+    blockingReasons.push("Projeto ja possui proposta enviada anteriormente.");
+  }
+
   if (!input.submitButtonVisible) {
     blockingReasons.push("Botao de envio nao esta visivel.");
   }

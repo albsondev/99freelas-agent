@@ -99,4 +99,45 @@ describe("local template proposal generator", () => {
     expect(result.risks[0]).toContain("análise");
     expect(result.qualityScore).toBeLessThan(90);
   });
+
+  it("caps details text length even when the listing title comes noisy", async () => {
+    const provider = createLocalTemplateProposalProvider();
+
+    const result = await provider.generate({
+      opportunity: {
+        id: "opp-3",
+        source: "PROJECT_LISTING",
+        url: "https://www.99freelas.com.br/project/teste-3",
+        title:
+          "Desenvolvimento web full stack - TypeScript, JavaScript e Python Desenvolvimento Web | Intermediário Preciso de um desenvolvedor full stack especializado em TypeScript/JavaScript e Python. Temos um sistema de CRM e precisamos de um profissional para manutenção, evolução, integrações, correções e melhorias contínuas com bastante agilidade e boa comunicação.",
+        description:
+          "Precisamos de apoio contínuo para manutenção do CRM, correção de bugs, pequenos ajustes, integrações, revisão de fluxos e melhorias em módulos já existentes. O objetivo é estabilizar o sistema e acelerar a evolução sem criar retrabalho.",
+        category: "Desenvolvimento Web",
+        skills: ["TypeScript", "JavaScript", "Python", "React", "Node.js"],
+        rawPayload: {},
+        status: "QUALIFIED",
+        decisionReasons: ["MATCHED_STACK"],
+        riskFlags: [],
+        matchedSkills: ["TypeScript", "JavaScript", "React", "Node.js"],
+        missingSkills: [],
+        score: 88,
+        firstSeenAt: "2026-06-12T00:00:00.000Z",
+        lastSeenAt: "2026-06-12T00:00:00.000Z",
+        createdAt: "2026-06-12T00:00:00.000Z",
+        updatedAt: "2026-06-12T00:00:00.000Z",
+      },
+      amount: 1400,
+      deadlineDays: 7,
+      pricingExplanation: "Abaixo da media para manter competitividade sem perder viabilidade.",
+      deadlineExplanation: "Prazo pensado para atacar prioridades sem prometer correria artificial.",
+      matchedSkills: ["TypeScript", "JavaScript", "React", "Node.js"],
+      missingSkills: [],
+      decisionReasons: ["MATCHED_STACK"],
+      riskFlags: [],
+    });
+
+    expect(result.detailsText.length).toBeLessThanOrEqual(1200);
+    expect(result.detailsText.length).toBeGreaterThanOrEqual(160);
+    expect(result.detailsText).toContain("TypeScript");
+  });
 });

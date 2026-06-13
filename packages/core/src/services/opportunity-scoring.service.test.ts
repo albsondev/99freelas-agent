@@ -42,6 +42,23 @@ describe("OpportunityScoringService", () => {
     expect(result.riskFlags).toContain("EXTERNAL_CONTACT_REQUEST");
   });
 
+  it("does not treat WhatsApp or email as off-platform contact when they are part of the product", () => {
+    const service = new OpportunityScoringService();
+    const result = service.score({
+      title: "Sistema web de gestão de cobranças recorrentes com WhatsApp e e-mail",
+      description:
+        "Preciso desenvolver um sistema web com integração de WhatsApp e e-mail para cobranças automáticas, painel administrativo, relatórios e regras de automação. Todo o contato do projeto será pela plataforma.",
+      category: "Desenvolvimento Web",
+      skills: ["React", "Node.js", "Integrações", "Dashboard"],
+      proposalCount: 40,
+      averageBidAmount: 900,
+      averageDeadlineDays: 10,
+    });
+
+    expect(result.riskFlags).not.toContain("EXTERNAL_CONTACT_REQUEST");
+    expect(result.score).toBeGreaterThanOrEqual(60);
+  });
+
   it("rejects projects centered on cloud, Java or full ecommerce", () => {
     const service = new OpportunityScoringService();
     const result = service.score({
@@ -93,5 +110,22 @@ describe("OpportunityScoringService", () => {
     expect(result.decisionHint).toBe("REVIEW_REQUIRED");
     expect(result.score).toBeGreaterThanOrEqual(60);
     expect(result.reasons).toContain("Projeto de site para advocacia entra no perfil aceito.");
+  });
+
+  it("blocks complex WordPress builds from automatic submission", () => {
+    const service = new OpportunityScoringService();
+    const result = service.score({
+      title: "Criar e integrar 29 páginas no site (WordPress/Elementor)",
+      description:
+        "Preciso criar e integrar 29 páginas em WordPress com Elementor, mantendo consistência visual e estrutura completa do site.",
+      category: "Desenvolvimento Web",
+      skills: ["WordPress", "Elementor"],
+      proposalCount: 41,
+      averageBidAmount: 1200,
+      averageDeadlineDays: 16,
+    });
+
+    expect(result.riskFlags).toContain("WORDPRESS_COMPLEX_SCOPE");
+    expect(result.decisionHint).not.toBe("AUTO_SUBMIT");
   });
 });

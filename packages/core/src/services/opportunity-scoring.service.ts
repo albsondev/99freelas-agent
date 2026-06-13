@@ -99,13 +99,6 @@ const NEGATIVE_RULES: Array<{
   missingSkill?: string;
 }> = [
   {
-    patterns: [/\bdesign\b/i, /\bidentidade visual\b/i],
-    penalty: 28,
-    riskFlag: "PURE_DESIGN_SCOPE",
-    reason: "Escopo com viés forte de design puro.",
-    missingSkill: "Design",
-  },
-  {
     patterns: [/\baws\b/i, /\bazure\b/i, /\bamazon web services\b/i, /\bcloudformation\b/i],
     penalty: 32,
     riskFlag: "CLOUD_INFRA_SCOPE",
@@ -139,12 +132,6 @@ const NEGATIVE_RULES: Array<{
     riskFlag: "FULL_ECOMMERCE_SCOPE",
     reason: "Projeto com sinais de e-commerce completo fora do escopo desejado.",
     missingSkill: "E-commerce completo",
-  },
-  {
-    patterns: [/\bwhatsapp\b/i, /\btelegram\b/i, /\be-mail\b/i, /\bemail\b/i],
-    penalty: 18,
-    riskFlag: "EXTERNAL_CONTACT_REQUEST",
-    reason: "Escopo sugere contato fora da plataforma.",
   },
   {
     patterns: [/\bpagamento por fora\b/i, /\bpix por fora\b/i],
@@ -249,19 +236,39 @@ export class OpportunityScoringService {
     }
 
     if ((input.proposalCount ?? 0) >= 20) {
-      score -= 4;
-      riskFlags.push("HIGH_COMPETITION");
-      reasons.push("Concorrência elevada reduz a atratividade marginal.");
+      reasons.push("Projeto com concorrência alta, mas ainda vale disputar se houver aderência.");
     }
 
     const isSimpleMobileFix =
       /\breact native\b/i.test(source) &&
       /\b(?:bug|ajuste|corre(?:ç|c)(?:a|ã)o|erro|simples|rapido|rápido)\b/i.test(source);
+    const hasPureDesignScope = detectPureDesignScope(source);
+    const hasExplicitExternalContactRequest = detectExplicitExternalContactRequest(source);
+    const hasComplexWordPressScope = detectComplexWordPressScope(source);
 
     if (isSimpleMobileFix) {
       score += 20;
       riskFlags.push("REACT_NATIVE_REVIEW_ONLY");
       reasons.push("React Native aparece em contexto simples/pontual, mantendo revisão possível.");
+    }
+
+    if (hasPureDesignScope) {
+      score -= 28;
+      riskFlags.push("PURE_DESIGN_SCOPE");
+      reasons.push("Escopo com viés forte de design puro.");
+      missingSkills.add("Design");
+    }
+
+    if (hasExplicitExternalContactRequest) {
+      score -= 18;
+      riskFlags.push("EXTERNAL_CONTACT_REQUEST");
+      reasons.push("Escopo sugere contato fora da plataforma.");
+    }
+
+    if (hasComplexWordPressScope) {
+      score -= 14;
+      riskFlags.push("WORDPRESS_COMPLEX_SCOPE");
+      reasons.push("Escopo em WordPress parece grande demais para envio automático sem revisão.");
     }
 
     for (const rule of NEGATIVE_RULES) {
@@ -290,6 +297,8 @@ export class OpportunityScoringService {
       "JAVA_SCOPE",
       "FULL_ECOMMERCE_SCOPE",
       "REACT_NATIVE_REVIEW_ONLY",
+      "PURE_DESIGN_SCOPE",
+      "WORDPRESS_COMPLEX_SCOPE",
     ]);
 
     const hardRejectFlags = new Set([
@@ -318,4 +327,100 @@ export class OpportunityScoringService {
       riskFlags: [...new Set(riskFlags)],
     };
   }
+}
+
+function detectPureDesignScope(source: string): boolean {
+  const designSignals = [
+    /\bui\/ux\b/i,
+    /\bux\/ui\b/i,
+    /\bfigma\b/i,
+    /\bwireframe\b/i,
+    /\bprot[oó]tip[oa]\b/i,
+    /\bidentidade visual\b/i,
+    /\blogo(?:marca)?\b/i,
+    /\bweb design\b/i,
+  ];
+  const implementationSignals = [
+    /\bwordpress\b/i,
+    /\belementor\b/i,
+    /\bphp\b/i,
+    /\breact\b/i,
+    /\bnext(?:\.js)?\b/i,
+    /\bvue(?:\.js)?\b/i,
+    /\bnode(?:\.js)?\b/i,
+    /\bdesenvolvimento web\b/i,
+    /\bsite\b/i,
+    /\blanding page\b/i,
+    /\bintegra(?:ç|c)(?:a|ã)o\b/i,
+  ];
+
+  return (
+    designSignals.some((pattern) => pattern.test(source)) &&
+    !implementationSignals.some((pattern) => pattern.test(source))
+  );
+}
+
+function detectExplicitExternalContactRequest(source: string): boolean {
+  const directRequestPatterns = [
+    /\b(?:falar|chamar|me chama|me chame|entrar em contato|contato|conversar|negociar|tratar|fechar)\b[\s\S]{0,40}\b(?:whatsapp|telegram|e-?mail|email)\b/i,
+    /\b(?:whatsapp|telegram|e-?mail|email)\b[\s\S]{0,40}\b(?:para fechar|para contato|para conversar|para negociar|para tratar)\b/i,
+    /\b(?:telefone|celular)\b[\s\S]{0,20}\b(?:whatsapp|telegram)\b/i,
+    /\b(?:meu|me chama no|fale comigo no)\b[\s\S]{0,20}\b(?:whatsapp|telegram|e-?mail|email)\b/i,
+  ];
+
+  return directRequestPatterns.some((pattern) => pattern.test(source));
+}
+
+function detectComplexWordPressScope(source: string): boolean {
+  const hasWordPressSignal =
+    /\bwordpress\b/i.test(source) || /\belementor\b/i.test(source);
+
+  if (!hasWordPressSignal) {
+    return false;
+  }
+
+  const safeSimpleSignals = [
+    /\b(?:ajuste|ajustes|bug|bugs|corre(?:ç|c)(?:a|ã)o|manuten(?:ç|c)(?:a|ã)o)\b/i,
+    /\blanding page\b/i,
+    /\b(?:p[aá]gina|lp)\s+simples\b/i,
+  ];
+
+  if (safeSimpleSignals.some((pattern) => pattern.test(source))) {
+    return false;
+  }
+
+  const hardSignals = [
+    /\b(?:\d{2,}|vinte|trinta|quarenta|cinquenta)\s+p[aá]ginas?\b/i,
+    /\bsite completo\b/i,
+    /\bsite inteiro\b/i,
+    /\b(?:[áa]rea de membros|portal|plataforma ead|eduma)\b/i,
+    /\b(?:muitas|v[aá]rias)\s+p[aá]ginas?\b/i,
+  ];
+
+  if (hardSignals.some((pattern) => pattern.test(source))) {
+    return true;
+  }
+
+  let effortSignals = 0;
+  const weightedSignals = [
+    /\b(?:criar|criação|desenvolver|integrar|reestruturar)\b[\s\S]{0,20}\b(?:site|p[aá]ginas?)\b/i,
+    /\bportf[oó]lio\b/i,
+    /\bblog\b/i,
+    /\bseo\b/i,
+    /\bgaler(?:ia|ias)\b/i,
+    /\bformul[áa]rio\b/i,
+    /\bresponsivo\b/i,
+    /\btablet\b/i,
+    /\bmobile\b/i,
+    /\bdesktop\b/i,
+    /\b(?:quem somos|servi[cç]os|contato)\b/i,
+  ];
+
+  for (const pattern of weightedSignals) {
+    if (pattern.test(source)) {
+      effortSignals += 1;
+    }
+  }
+
+  return effortSignals >= 4;
 }

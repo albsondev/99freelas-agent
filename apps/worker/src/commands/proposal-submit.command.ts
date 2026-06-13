@@ -92,14 +92,31 @@ export async function executeProposalSubmitFlow(input: {
     opportunities,
     proposalId: input.proposalId,
   });
-  const preparedSelection = await refreshProposalUsingLivePageSignals({
-    env: input.env,
-    proposals,
-    opportunities,
-    settings,
-    userProfiles,
-    selection,
-  });
+  let preparedSelection: ProposalSelectionResult;
+
+  try {
+    preparedSelection = await refreshProposalUsingLivePageSignals({
+      env: input.env,
+      proposals,
+      opportunities,
+      settings,
+      userProfiles,
+      selection,
+    });
+  } catch (error) {
+    if (isDuplicatedProposalError(error)) {
+      return await finalizeDuplicatedProposal({
+        proposals,
+        opportunities,
+        proposal: selection.proposal,
+        opportunity: selection.opportunity,
+        selection,
+        reason: extractDuplicateProposalReason(error),
+      });
+    }
+
+    throw error;
+  }
   const { proposal, opportunity } = preparedSelection;
 
   const today = formatCounterDate(new Date());
@@ -474,6 +491,7 @@ export async function executeProposalBatchFlow(input: {
     proposals,
     opportunities,
     limit: Math.max(100, input.limit * 20),
+    autoSubmitOnly: true,
   });
 
   const results: ProposalSubmitExecutionResult[] = [];
@@ -603,6 +621,12 @@ async function refreshProposalUsingLivePageSignals(input: {
   ) {
     throw new Error(
       "Nao foi possivel validar media de propostas e prazo medio na pagina autenticada antes do preenchimento.",
+    );
+  }
+
+  if (inspected.page.hasExistingProposal) {
+    throw new Error(
+      "DUPLICATED_PROPOSAL: Projeto ja possui proposta enviada anteriormente (modo melhorar proposta detectado).",
     );
   }
 
@@ -842,12 +866,19 @@ async function listProposalSelections(input: {
   proposals: ProposalRepository;
   opportunities: OpportunityRepository;
   limit: number;
+  autoSubmitOnly?: boolean;
 }): Promise<Array<ProposalSelectionResult & { rank: number }>> {
   const proposals = await input.proposals.listRecent(Math.max(50, input.limit));
   const candidates: Array<ProposalSelectionResult & { rank: number }> = [];
 
   for (const proposal of proposals) {
-    if (proposal.submissionStatus === "SUBMITTED" || proposal.submissionStatus === "DUPLICATED") {
+    if (
+      proposal.submissionStatus === "SUBMITTED" ||
+      proposal.submissionStatus === "DUPLICATED" ||
+      proposal.submissionStatus === "PENDING" ||
+      proposal.submissionStatus === "FAILED" ||
+      proposal.submissionStatus === "FAILED_REQUIRES_MANUAL_ACTION"
+    ) {
       continue;
     }
 
@@ -862,6 +893,10 @@ async function listProposalSelections(input: {
     }
 
     if (opportunity.decision === "REJECTED" || opportunity.decision === "FAILED") {
+      continue;
+    }
+
+    if (input.autoSubmitOnly && opportunity.decision !== "AUTO_SUBMIT") {
       continue;
     }
 
@@ -897,6 +932,9 @@ function getBatchSkipReason(
   const blockingFlags = new Set([
     "EXTERNAL_CONTACT_REQUEST",
     "OFF_PLATFORM_PAYMENT_REQUEST",
+    "PURE_DESIGN_SCOPE",
+    "WORDPRESS_COMPLEX_SCOPE",
+    "REACT_NATIVE_REVIEW_ONLY",
   ]);
 
   const matchedBlockingFlags = candidate.opportunity.riskFlags.filter((flag) =>
@@ -1102,6 +1140,7 @@ function buildDuplicatedBrowserResult(
       availableConnections: null,
       requiredConnections: null,
       hasProposalForm: false,
+      hasExistingProposal: true,
       hasQuestionChannel: false,
     },
     warnings: [],

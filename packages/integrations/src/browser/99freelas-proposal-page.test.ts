@@ -29,6 +29,7 @@ describe("parse99FreelasProposalPage", () => {
       availableConnections: 250,
       requiredConnections: 1,
       hasProposalForm: true,
+      hasExistingProposal: false,
       hasQuestionChannel: true,
     });
   });
@@ -41,6 +42,7 @@ describe("parse99FreelasProposalPage", () => {
       availableConnections: null,
       requiredConnections: null,
       hasProposalForm: false,
+      hasExistingProposal: false,
       hasQuestionChannel: false,
     });
   });
@@ -65,6 +67,7 @@ Fazer pergunta
       availableConnections: null,
       requiredConnections: null,
       hasProposalForm: true,
+      hasExistingProposal: true,
       hasQuestionChannel: true,
     });
   });

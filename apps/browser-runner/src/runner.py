@@ -735,12 +735,13 @@ async def collect_project_listing_core(page: Page, payload: dict[str, Any]) -> d
             timeout=payload_timeout(payload),
         )
         await page.wait_for_timeout(1500)
+        await ensure_listing_page_fully_loaded(page)
         pages_visited += 1
 
         # Pass seen URLs as a plain list so the JS context can build its own Set.
         # Using a Set directly is not serialisable across the evaluate boundary.
         page_items = await page.evaluate(
-            """([limit, seenList]) => {
+            r"""([limit, seenList]) => {
           const seen = new Set(seenList);
           const anchors = Array.from(document.querySelectorAll('a[href*="/project/"]'));
           const items = [];
@@ -817,6 +818,25 @@ async def collect_project_listing_core(page: Page, payload: dict[str, Any]) -> d
         "pagesVisited": pages_visited,
         "sourceKind": source_kind,
     }
+
+
+async def ensure_listing_page_fully_loaded(page: Page) -> None:
+    previous_height = -1
+
+    for _ in range(12):
+        current_height = await page.evaluate(
+            "() => Math.max(document.body.scrollHeight, document.documentElement.scrollHeight)"
+        )
+
+        if current_height == previous_height:
+            break
+
+        previous_height = current_height
+        await page.evaluate("height => window.scrollTo(0, height)", current_height)
+        await page.wait_for_timeout(600)
+
+    await page.evaluate("() => window.scrollTo(0, 0)")
+    await page.wait_for_timeout(250)
 
 
 
