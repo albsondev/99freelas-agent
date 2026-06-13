@@ -18,8 +18,9 @@ import {
 } from "@99freelas/integrations";
 import { QueueNames, type OpportunityFetchSweepAction } from "@99freelas/core";
 
+import { runContinuousAutopilot } from "./commands/autopilot-loop.command.js";
 import {
-  executeProposalBatchFlow,
+  executeProposalBatchFlow as executeProposalBatchFlowCommand,
   executeProposalObserveFlow,
   executeProposalSubmitFlow,
 } from "./commands/proposal-submit.command.js";
@@ -310,6 +311,31 @@ async function main() {
     return;
   }
 
+  if (command === "autopilot:loop") {
+    const maxCycles = readNumberOption("--max-cycles");
+    const result = await runContinuousAutopilot(env, {
+      batchSize: readNumberOption("--batch-size") ?? 3,
+      holdOpenMs: readNumberOption("--hold-ms") ?? 1_500,
+      pollIntervalMs: readNumberOption("--poll-interval-ms") ?? 60_000,
+      stepDelayMs: readNumberOption("--step-delay-ms") ?? 900,
+      ...(maxCycles !== null ? { maxCycles } : {}),
+    });
+
+    console.log(
+      JSON.stringify(
+        {
+          service: "worker",
+          command,
+          status: "loop-stopped",
+          result,
+        },
+        null,
+        2,
+      ),
+    );
+    return;
+  }
+
   if (command === "proposal:prefill") {
     if (env.BROWSER_AUTOMATION_RUNTIME !== "python-playwright") {
       assertWorkerControlledBrowserMode(env.BROWSER_SESSION_MODE, command);
@@ -426,7 +452,7 @@ async function main() {
   }
 
   if (command === "proposal:submit-batch") {
-    const result = await executeProposalBatchFlow({
+    const result = await executeProposalBatchFlowCommand({
       env,
       limit: readNumberOption("--limit") ?? 2,
       executeLiveSubmit: process.argv.includes("--live"),

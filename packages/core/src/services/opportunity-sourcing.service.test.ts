@@ -16,7 +16,9 @@ describe("OpportunitySourcingService", () => {
       "HUNT_PROJECT_LIST",
     ]);
     expect(plan.steps[0]?.targetUrl).toContain("/project-notifications/view?limit=20");
-    expect(plan.steps[1]?.targetUrl).toBe("https://www.99freelas.com.br/projects");
+    expect(plan.steps[1]?.targetUrl).toBe(
+      "https://www.99freelas.com.br/projects?categoria=web-mobile-e-software",
+    );
   });
 
   it("can build a retry-first plan without losing the primary sourcing order", () => {

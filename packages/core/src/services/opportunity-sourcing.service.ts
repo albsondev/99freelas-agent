@@ -21,7 +21,7 @@ export type OpportunitySourcingPlan = {
 
 const RECOMMENDED_NOTIFICATIONS_URL =
   "https://www.99freelas.com.br/project-notifications/view?limit=20";
-const PROJECT_LIST_URL = "https://www.99freelas.com.br/projects";
+const PROJECT_LIST_URL = "https://www.99freelas.com.br/projects?categoria=web-mobile-e-software";
 
 export class OpportunitySourcingService {
   buildPlan(input: OpportunitySourcingPlanInput = {}): OpportunitySourcingPlan {

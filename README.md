@@ -67,6 +67,7 @@ O clique real ficou preparado, mas so pode acontecer quando todas estas condicoe
 - proposta com `compliance_status = APPROVED`
 - oportunidade com decisao `AUTO_SUBMIT` e score acima do minimo configurado
 - limites horario e diario abaixo do teto
+- limite de paginação (`MAX_HUNT_PAGES=7` por padrão) respeitado na caça pública
 - comando executado com `--live --confirm-live-submit`
 
 Na pratica, a autenticacao automatizada pode ser bloqueada pelo Cloudflare. Quando isso acontecer, agora existem duas trilhas:
@@ -134,6 +135,7 @@ pnpm proposal:prefill
 pnpm proposal:observe
 pnpm proposal:submit
 pnpm proposal:submit-batch
+pnpm autopilot:loop
 pnpm source:recommended
 pnpm source:hunt
 pnpm source:smart
@@ -167,6 +169,8 @@ Fluxo sugerido:
 - use `pnpm session:check` para confirmar a sessao
 - siga com `pnpm proposal:prefill`, `pnpm proposal:observe` ou `pnpm proposal:submit`
 - para simular uso real com o mesmo Chromium visivel entre varias propostas, use `pnpm proposal:submit-batch`
+- para o ciclo continuo completo, use `pnpm autopilot:loop -- --batch-size 3 --poll-interval-ms 60000`
+- durante `pnpm autopilot:loop`, o terminal agora mostra resumo por ciclo: paginas percorridas, links encontrados, quantos projetos entraram na fila, quantos foram aprovados/revisados/rejeitados, principais alertas e quantas propostas foram enviadas
 - quando quiser encerrar o navegador dedicado em segundo plano, use `pnpm session:shutdown`
 
 Nesse modo, o worker continua usando Supabase, score, LLM e guardrails do projeto atual. O que muda e apenas o "braço" de browser automation.

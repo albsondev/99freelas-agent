@@ -282,23 +282,32 @@ export class OpportunityScoringService {
 
     score = Math.max(0, Math.min(100, score));
 
+    const autoSubmitBlockingFlags = new Set([
+      "EXTERNAL_CONTACT_REQUEST",
+      "OFF_PLATFORM_PAYMENT_REQUEST",
+      "UNCLEAR_SCOPE",
+      "CLOUD_INFRA_SCOPE",
+      "JAVA_SCOPE",
+      "FULL_ECOMMERCE_SCOPE",
+      "REACT_NATIVE_REVIEW_ONLY",
+    ]);
+
+    const hardRejectFlags = new Set([
+      "EXTERNAL_CONTACT_REQUEST",
+      "OFF_PLATFORM_PAYMENT_REQUEST",
+      "CLOUD_INFRA_SCOPE",
+      "JAVA_SCOPE",
+      "FULL_ECOMMERCE_SCOPE",
+      "NATIVE_APP_SCOPE",
+    ]);
+
     const decisionHint =
-      score >= this.config.autopilotMinScore &&
-      !riskFlags.some((flag) =>
-        [
-          "EXTERNAL_CONTACT_REQUEST",
-          "OFF_PLATFORM_PAYMENT_REQUEST",
-          "UNCLEAR_SCOPE",
-          "CLOUD_INFRA_SCOPE",
-          "JAVA_SCOPE",
-          "FULL_ECOMMERCE_SCOPE",
-          "REACT_NATIVE_REVIEW_ONLY",
-        ].includes(flag),
-      )
+      riskFlags.some((flag) => hardRejectFlags.has(flag)) || score < this.config.reviewMinScore
+        ? "REJECTED"
+        : score >= this.config.autopilotMinScore &&
+            !riskFlags.some((flag) => autoSubmitBlockingFlags.has(flag))
         ? "AUTO_SUBMIT"
-        : score >= this.config.reviewMinScore
-          ? "REVIEW_REQUIRED"
-          : "REJECTED";
+        : "REVIEW_REQUIRED";
 
     return {
       score,

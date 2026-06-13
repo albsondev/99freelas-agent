@@ -1,7 +1,7 @@
 export const PROJECT_NOTIFICATIONS_URL =
   "https://www.99freelas.com.br/project-notifications/view?limit=20";
 
-export const PROJECT_LIST_URL = "https://www.99freelas.com.br/projects";
+export const PROJECT_LIST_URL = "https://www.99freelas.com.br/projects?categoria=web-mobile-e-software";
 
 export type ProjectListingSourceKind =
   | "recommended-notifications"
@@ -16,5 +16,6 @@ export type Collect99FreelasProjectListingsResult = {
   currentUrl: string;
   items: Collected99FreelasProjectListItem[];
   listingUrl: string;
+  pagesVisited?: number;
   sourceKind: ProjectListingSourceKind;
 };

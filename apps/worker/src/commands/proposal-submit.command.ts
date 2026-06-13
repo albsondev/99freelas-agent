@@ -473,13 +473,17 @@ export async function executeProposalBatchFlow(input: {
   const candidates = await listProposalSelections({
     proposals,
     opportunities,
-    limit: Math.max(1, input.limit),
+    limit: Math.max(100, input.limit * 20),
   });
 
   const results: ProposalSubmitExecutionResult[] = [];
   const skipped: string[] = [];
 
   for (const candidate of candidates) {
+    if (results.length >= input.limit) {
+      break;
+    }
+
     const batchSkipReason = getBatchSkipReason(candidate, input.env.AUTOPILOT_MIN_SCORE);
 
     if (batchSkipReason) {
@@ -839,7 +843,7 @@ async function listProposalSelections(input: {
   opportunities: OpportunityRepository;
   limit: number;
 }): Promise<Array<ProposalSelectionResult & { rank: number }>> {
-  const proposals = await input.proposals.listRecent(50);
+  const proposals = await input.proposals.listRecent(Math.max(50, input.limit));
   const candidates: Array<ProposalSelectionResult & { rank: number }> = [];
 
   for (const proposal of proposals) {
@@ -893,13 +897,6 @@ function getBatchSkipReason(
   const blockingFlags = new Set([
     "EXTERNAL_CONTACT_REQUEST",
     "OFF_PLATFORM_PAYMENT_REQUEST",
-    "UNCLEAR_SCOPE",
-    "LOW_BUDGET",
-    "LOW_AVERAGE_BID",
-    "IMPOSSIBLE_DEADLINE",
-    "PURE_DESIGN_SCOPE",
-    "MARKETING_SCOPE",
-    "NATIVE_APP_SCOPE",
   ]);
 
   const matchedBlockingFlags = candidate.opportunity.riskFlags.filter((flag) =>

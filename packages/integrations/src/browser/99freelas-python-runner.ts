@@ -71,6 +71,7 @@ type PythonRunnerSubmitInput = PythonRunnerBaseInput &
 export type Collect99FreelasProjectListingsInput = PythonRunnerBaseInput & {
   limit?: number;
   listingUrl: string;
+  maxPages?: number;
   sourceKind: ProjectListingSourceKind;
 };
 

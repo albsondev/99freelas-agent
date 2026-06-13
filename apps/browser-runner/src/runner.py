@@ -711,24 +711,38 @@ async def proposal_submit_core(
         "beforeScreenshotPath": before_screenshot,
         "afterScreenshotPath": after_screenshot,
     }
-
-
 async def collect_project_listing_core(page: Page, payload: dict[str, Any]) -> dict[str, Any]:
     listing_url = str(payload.get("listingUrl") or PROJECT_NOTIFICATIONS_URL)
     source_kind = str(payload.get("sourceKind") or "recommended-notifications")
     limit = max(1, int(payload.get("limit", 20)))
+    max_pages = int(payload.get("maxPages", 1))
+    # Absolute safety cap — prevents runaway loops regardless of maxPages value.
+    hard_page_cap = 200
+    seen_urls: set[str] = set()
+    seen_page_signatures: set[str] = set()
+    items: list[dict[str, str]] = []
+    pages_visited = 0
+    page_number = 1
 
-    await page.goto(
-        listing_url,
-        wait_until="domcontentloaded",
-        timeout=payload_timeout(payload),
-    )
-    await page.wait_for_timeout(1500)
+    while pages_visited < hard_page_cap:
+        target_url = listing_url
+        if source_kind == "public-project-list":
+            target_url = append_page_query(listing_url, page_number)
 
-    items = await page.evaluate(
-        """(limit) => {
+        await page.goto(
+            target_url,
+            wait_until="domcontentloaded",
+            timeout=payload_timeout(payload),
+        )
+        await page.wait_for_timeout(1500)
+        pages_visited += 1
+
+        # Pass seen URLs as a plain list so the JS context can build its own Set.
+        # Using a Set directly is not serialisable across the evaluate boundary.
+        page_items = await page.evaluate(
+            """([limit, seenList]) => {
+          const seen = new Set(seenList);
           const anchors = Array.from(document.querySelectorAll('a[href*="/project/"]'));
-          const seen = new Set();
           const items = [];
 
           for (const anchor of anchors) {
@@ -746,13 +760,13 @@ async def collect_project_listing_core(page: Page, payload: dict[str, Any]) -> d
               continue;
             }
 
-            const title = (anchor.textContent || '').replace(/\\s+/g, ' ').trim();
+            const title = (anchor.textContent || '').replace(/\s+/g, ' ').trim();
             if (!title) {
               continue;
             }
 
-            seen.add(absoluteUrl);
             items.push({ url: absoluteUrl, title });
+            seen.add(absoluteUrl);
 
             if (items.length >= limit) {
               break;
@@ -761,15 +775,50 @@ async def collect_project_listing_core(page: Page, payload: dict[str, Any]) -> d
 
           return items;
         }""",
-        limit,
-    )
+            [limit, list(seen_urls)],
+        )
+
+        page_signature = "|".join(
+            [page.url] + [str(item.get("url") or "") for item in page_items[:5]]
+        )
+        if page_signature in seen_page_signatures:
+            break
+        seen_page_signatures.add(page_signature)
+
+        for item in page_items:
+            url = str(item.get("url") or "")
+            title = str(item.get("title") or "").strip()
+            if not url or not title or url in seen_urls:
+                continue
+            seen_urls.add(url)
+            items.append({"url": url, "title": title})
+            if len(items) >= limit:
+                break
+
+        if len(items) >= limit:
+            break
+
+        # For notifications (single-page source), stop after the first page.
+        if source_kind != "public-project-list":
+            break
+
+        # For paginated public listing, stop when a page yields no items.
+        if not page_items:
+            break
+
+        page_number += 1
+        if max_pages > 0 and page_number > max_pages:
+            break
 
     return {
         "currentUrl": page.url,
         "items": items,
         "listingUrl": listing_url,
+        "pagesVisited": pages_visited,
         "sourceKind": source_kind,
     }
+
+
 
 
 async def scrape_project_page_core(page: Page, payload: dict[str, Any]) -> dict[str, Any]:
@@ -1031,6 +1080,17 @@ def format_deadline_input(days: Any) -> str:
 
 def payload_timeout(payload: dict[str, Any]) -> int:
     return int(payload.get("timeoutMs", 45000))
+
+
+def append_page_query(listing_url: str, page_number: int) -> str:
+    if page_number <= 1:
+        return listing_url
+
+    separator = "&" if "?" in listing_url else "?"
+    if re.search(r"([?&])page=\d+", listing_url):
+        return re.sub(r"([?&])page=\d+", rf"\1page={page_number}", listing_url, count=1)
+
+    return f"{listing_url}{separator}page={page_number}"
 
 
 def has_existing_submission_signal(text: str) -> bool:

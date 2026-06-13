@@ -54,8 +54,9 @@ describe("local template proposal generator", () => {
     expect(result.llmModel).toBe("local-template-v1");
     expect(result.detailsText.toLowerCase()).not.toContain("whatsapp");
     expect(result.detailsText.toLowerCase()).not.toContain("http");
-    expect(result.detailsText).toContain("você");
-    expect(result.technicalSummary).toContain("execução");
+    expect(result.detailsText).toMatch(/faz bastante sentido|entendi bem|me parece|pensando no resultado/i);
+    expect(result.detailsText).toMatch(/comunicação|acompanhar|plataforma|tranquilidade/i);
+    expect(result.technicalSummary).toContain("entrega planejada");
   });
 
   it("switches to a more cautious tone when the scope is unclear", async () => {
@@ -93,7 +94,7 @@ describe("local template proposal generator", () => {
       riskFlags: ["UNCLEAR_SCOPE"],
     });
 
-    expect(result.detailsText).toContain("validando primeiro os pontos críticos");
+    expect(result.detailsText).toMatch(/validando primeiro os pontos críticos|alinhar isso logo no começo/i);
     expect(result.risks[0]).toContain("Escopo");
     expect(result.risks[0]).toContain("análise");
     expect(result.qualityScore).toBeLessThan(90);

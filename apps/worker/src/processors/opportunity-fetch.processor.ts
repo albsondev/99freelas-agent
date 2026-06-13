@@ -33,6 +33,34 @@ type ProcessOpportunityFetchContext = {
   producer: ProcessorProducer;
 };
 
+export type SourcingStepReport = {
+  action: "PROCESS_RECOMMENDED_NOTIFICATIONS" | "HUNT_PROJECT_LIST";
+  listingUrl: string;
+  pagesVisited: number;
+  linksCollected: number;
+  importedCount: number;
+  duplicatedCount: number;
+  enqueuedCount: number;
+  autoSubmitCount: number;
+  reviewCount: number;
+  rejectedCount: number;
+  topDecisionReasons: Array<{
+    label: string;
+    count: number;
+  }>;
+  topRiskFlags: Array<{
+    label: string;
+    count: number;
+  }>;
+};
+
+export type SourcingPlanReport = {
+  duplicatedCount: number;
+  enqueuedCount: number;
+  importedCount: number;
+  steps: SourcingStepReport[];
+};
+
 function asJsonObject(value: JsonValue): Record<string, JsonValue> {
   if (typeof value === "object" && value !== null && !Array.isArray(value)) {
     return value as Record<string, JsonValue>;
@@ -44,7 +72,7 @@ function asJsonObject(value: JsonValue): Record<string, JsonValue> {
 export async function processOpportunityFetchJob(
   payload: OpportunityFetchJobPayload,
   context: ProcessOpportunityFetchContext,
-): Promise<void> {
+): Promise<SourcingPlanReport | null> {
   await context.runs.update(payload.runId, {
     status: "PROCESSING",
   });
@@ -82,7 +110,7 @@ export async function processOpportunityFetchJob(
         })),
       },
     });
-    return;
+    return imported;
   }
 
   const opportunity = await context.opportunities.getById(payload.opportunityId);
@@ -94,7 +122,7 @@ export async function processOpportunityFetchJob(
       error_code: "OPPORTUNITY_NOT_FOUND",
       error_message: `Opportunity ${payload.opportunityId} was not found`,
     });
-    return;
+    return null;
   }
 
   await context.opportunities.update(payload.opportunityId, {
@@ -138,6 +166,8 @@ export async function processOpportunityFetchJob(
   await context.runs.update(parseRun.id, {
     job_id: parseJob.jobId,
   });
+
+  return null;
 }
 
 async function runSourcingPlan(
@@ -150,10 +180,12 @@ async function runSourcingPlan(
   duplicatedCount: number;
   enqueuedCount: number;
   importedCount: number;
+  steps: SourcingStepReport[];
 }> {
   let importedCount = 0;
   let duplicatedCount = 0;
   let enqueuedCount = 0;
+  const stepsReport: SourcingStepReport[] = [];
 
   for (const step of steps) {
     if (
@@ -169,11 +201,18 @@ async function runSourcingPlan(
         ? PROJECT_NOTIFICATIONS_URL
         : PROJECT_LIST_URL);
 
+    const huntMaxPages = context.env.MAX_HUNT_PAGES;
+    // Limit proportional to pages (approx. 20 projects per page) with a minimum of 20.
+    const huntLimit = step.action === "HUNT_PROJECT_LIST"
+      ? Math.max(20, huntMaxPages * 20)
+      : 20;
+
     const collected = await collectProjectListingsViaPython({
       browserName: context.env.PYTHON_BROWSER_NAME,
       headless: false,
       listingUrl,
-      limit: 20,
+      limit: huntLimit,
+      maxPages: step.action === "HUNT_PROJECT_LIST" ? huntMaxPages : 1,
       profileDir: context.env.PYTHON_BROWSER_PROFILE_DIR,
       pythonExecutable: context.env.PYTHON_EXECUTABLE,
       screenshotDir: context.env.BROWSER_SCREENSHOT_DIR,
@@ -182,8 +221,17 @@ async function runSourcingPlan(
           ? "recommended-notifications"
           : "public-project-list",
       storageStatePath: context.env.PYTHON_BROWSER_STORAGE_STATE_PATH,
-      timeoutMs: 60_000,
+      timeoutMs: step.action === "HUNT_PROJECT_LIST" ? 90_000 : 60_000,
     });
+
+    const decisionReasonCounts = new Map<string, number>();
+    const riskFlagCounts = new Map<string, number>();
+    let stepImportedCount = 0;
+    let stepDuplicatedCount = 0;
+    let stepEnqueuedCount = 0;
+    let stepAutoSubmitCount = 0;
+    let stepReviewCount = 0;
+    let stepRejectedCount = 0;
 
     for (const item of collected.items) {
       const canonicalUrl = normalizeProjectUrl(item.url);
@@ -191,6 +239,7 @@ async function runSourcingPlan(
 
       if (duplicated) {
         duplicatedCount += 1;
+        stepDuplicatedCount += 1;
         await context.opportunities.update(duplicated.id, {
           last_seen_at: new Date().toISOString(),
         });
@@ -214,6 +263,7 @@ async function runSourcingPlan(
         status: "NEW",
       });
       importedCount += 1;
+      stepImportedCount += 1;
 
       const run = await context.runs.create({
         type: QueueNames.OPPORTUNITY_FETCH,
@@ -225,6 +275,11 @@ async function runSourcingPlan(
         },
       });
 
+      console.log(
+        `[Triagem ${step.action === "PROCESS_RECOMMENDED_NOTIFICATIONS" ? "notificacoes" : "projetos"}] ` +
+          `${stepImportedCount}/${Math.max(1, collected.items.length - stepDuplicatedCount)} ` +
+          `novo(s) em analise: ${item.title || item.url}`,
+      );
       const inlineProducer = createInlineOpportunityPipelineProducer({
         env: context.env,
         opportunities: context.opportunities,
@@ -251,16 +306,62 @@ async function runSourcingPlan(
         job_id: `inline:${QueueNames.OPPORTUNITY_FETCH}:${opportunity.id}`,
       });
       enqueuedCount += 1;
+      stepEnqueuedCount += 1;
+
+      const processedOpportunity = await context.opportunities.getById(opportunity.id);
+
+      if (!processedOpportunity) {
+        continue;
+      }
+
+      if (processedOpportunity.decision === "AUTO_SUBMIT") {
+        stepAutoSubmitCount += 1;
+      } else if (processedOpportunity.decision === "REVIEW_REQUIRED") {
+        stepReviewCount += 1;
+      } else if (processedOpportunity.decision === "REJECTED") {
+        stepRejectedCount += 1;
+      }
+
+      const primaryReason =
+        processedOpportunity.decisionReasons.find((reason) => reason.trim().length > 0) ??
+        "Sem motivo registrado";
+      decisionReasonCounts.set(
+        primaryReason,
+        (decisionReasonCounts.get(primaryReason) ?? 0) + 1,
+      );
+
+      for (const flag of processedOpportunity.riskFlags) {
+        riskFlagCounts.set(flag, (riskFlagCounts.get(flag) ?? 0) + 1);
+      }
     }
 
-    if (importedCount > 0) {
-      break;
-    }
+    stepsReport.push({
+      action: step.action,
+      listingUrl,
+      pagesVisited: collected.pagesVisited ?? 1,
+      linksCollected: collected.items.length,
+      importedCount: stepImportedCount,
+      duplicatedCount: stepDuplicatedCount,
+      enqueuedCount: stepEnqueuedCount,
+      autoSubmitCount: stepAutoSubmitCount,
+      reviewCount: stepReviewCount,
+      rejectedCount: stepRejectedCount,
+      topDecisionReasons: topEntries(decisionReasonCounts),
+      topRiskFlags: topEntries(riskFlagCounts),
+    });
   }
 
   return {
     duplicatedCount,
     enqueuedCount,
     importedCount,
+    steps: stepsReport,
   };
+}
+
+function topEntries(source: Map<string, number>, limit = 3): Array<{ label: string; count: number }> {
+  return [...source.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, limit)
+    .map(([label, count]) => ({ label, count }));
 }

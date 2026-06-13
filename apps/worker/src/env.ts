@@ -39,6 +39,7 @@ export type WorkerEnv = Pick<
   | "MAX_AUTOPILOT_SUBMISSIONS_PER_HOUR"
   | "ENABLE_REAL_99FREELAS_SUBMISSION"
   | "MIN_REAL_SUBMISSION_DETAILS_LENGTH"
+  | "MAX_HUNT_PAGES"
 >;
 
 export function loadWorkerEnv(source: NodeJS.ProcessEnv = process.env): WorkerEnv {
@@ -82,5 +83,6 @@ export function loadWorkerEnv(source: NodeJS.ProcessEnv = process.env): WorkerEn
     MAX_AUTOPILOT_SUBMISSIONS_PER_HOUR: env.MAX_AUTOPILOT_SUBMISSIONS_PER_HOUR,
     ENABLE_REAL_99FREELAS_SUBMISSION: env.ENABLE_REAL_99FREELAS_SUBMISSION,
     MIN_REAL_SUBMISSION_DETAILS_LENGTH: env.MIN_REAL_SUBMISSION_DETAILS_LENGTH,
+    MAX_HUNT_PAGES: env.MAX_HUNT_PAGES,
   };
 }

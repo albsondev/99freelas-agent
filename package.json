@@ -20,6 +20,7 @@
     "source:recommended": "pnpm --filter @99freelas/worker source:recommended",
     "source:hunt": "pnpm --filter @99freelas/worker source:hunt",
     "source:smart": "pnpm --filter @99freelas/worker source:smart",
+    "autopilot:loop": "pnpm --filter @99freelas/worker autopilot:loop",
     "proposal:prefill": "pnpm --filter @99freelas/worker proposal:prefill",
     "proposal:observe": "pnpm --filter @99freelas/worker proposal:observe",
     "import:url": "pnpm --filter @99freelas/api import:url",
