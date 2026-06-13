@@ -115,6 +115,20 @@ export async function executeProposalSubmitFlow(input: {
       });
     }
 
+    if (isManualActionRequiredError(error)) {
+      return await finalizeManualActionRequiredProposal({
+        proposals,
+        opportunities,
+        proposal: selection.proposal,
+        opportunity: selection.opportunity,
+        selection,
+        reason: extractErrorMessage(
+          error,
+          "Formulario de proposta nao ficou disponivel para automacao.",
+        ),
+      });
+    }
+
     throw error;
   }
   const { proposal, opportunity } = preparedSelection;
@@ -327,6 +341,71 @@ async function finalizeDuplicatedProposal(input: {
     proposalId: updatedProposal.id,
     opportunityId: updatedOpportunity.id,
     submissionStatus: "DUPLICATED",
+    submissionError: input.reason,
+    beforeScreenshotPath: null,
+    afterScreenshotPath: null,
+    liveSubmitted: false,
+    guardrails,
+    browser,
+    selection: withUpdatedProposalSelection(input.selection, updatedProposal, updatedOpportunity),
+  };
+}
+
+async function finalizeManualActionRequiredProposal(input: {
+  proposals: ProposalRepository;
+  opportunities: OpportunityRepository;
+  proposal: Proposal;
+  opportunity: Opportunity;
+  selection: ProposalSelectionResult;
+  reason: string;
+}): Promise<ProposalSubmitExecutionResult> {
+  const updatedProposal = await input.proposals.update(input.proposal.id, {
+    submission_status: "FAILED_REQUIRES_MANUAL_ACTION",
+    submission_error: input.reason,
+    submitted_at: input.proposal.submittedAt ?? null,
+  });
+
+  const updatedOpportunity = await input.opportunities.update(input.opportunity.id, {
+    status: "WAITING_REVIEW",
+    decision: "REVIEW_REQUIRED",
+    decision_reasons: [
+      ...new Set([
+        ...input.opportunity.decisionReasons,
+        "Formulario indisponivel para automacao; revisar manualmente antes de reenviar.",
+      ]),
+    ],
+  });
+
+  const browser = {
+    ...buildDuplicatedBrowserResult(updatedProposal, updatedOpportunity, input.reason),
+    page: {
+      ...buildDuplicatedBrowserResult(updatedProposal, updatedOpportunity, input.reason).page,
+      hasExistingProposal: false,
+    },
+  };
+  const guardrails = new ProposalSubmissionGuardrailsService().evaluate({
+    mode: "AUTOPILOT",
+    proposal: updatedProposal,
+    opportunity: updatedOpportunity,
+    browserReadiness: {
+      readyForManualSubmit: false,
+      blockingReasons: browser.blockingReasons,
+      warnings: browser.warnings,
+    },
+    allowRealSubmission: false,
+    explicitLiveConfirmation: false,
+    autopilotMinScore: 0,
+    minDetailsLength: 0,
+    dailySubmissionCount: 0,
+    hourlySubmissionCount: 0,
+    maxSubmissionsPerDay: 0,
+    maxSubmissionsPerHour: 0,
+  });
+
+  return {
+    proposalId: updatedProposal.id,
+    opportunityId: updatedOpportunity.id,
+    submissionStatus: "FAILED_REQUIRES_MANUAL_ACTION",
     submissionError: input.reason,
     beforeScreenshotPath: null,
     afterScreenshotPath: null,
@@ -1111,6 +1190,10 @@ function isDuplicatedProposalError(error: unknown): boolean {
   return error instanceof Error && error.message.includes("DUPLICATED_PROPOSAL:");
 }
 
+function isManualActionRequiredError(error: unknown): boolean {
+  return error instanceof Error && error.message.includes("Formulario de proposta nao ficou visivel.");
+}
+
 function extractDuplicateProposalReason(error: unknown): string {
   if (!(error instanceof Error)) {
     return "Projeto ja possui proposta enviada anteriormente.";
@@ -1119,6 +1202,12 @@ function extractDuplicateProposalReason(error: unknown): string {
   return error.message
     .replace(/^.*DUPLICATED_PROPOSAL:\s*/s, "")
     .trim();
+}
+
+function extractErrorMessage(error: unknown, fallback: string): string {
+  return error instanceof Error && error.message.trim().length > 0
+    ? error.message.trim()
+    : fallback;
 }
 
 function buildDuplicatedBrowserResult(
