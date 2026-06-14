@@ -16,7 +16,7 @@ export type ScoreInput = {
 
 export type ScoreResult = {
   score: number;
-  decisionHint: "AUTO_SUBMIT" | "REVIEW_REQUIRED" | "REJECTED";
+  decisionHint: "AUTO_SUBMIT" | "REJECTED";
   reasons: string[];
   matchedSkills: string[];
   missingSkills: string[];
@@ -289,18 +289,6 @@ export class OpportunityScoringService {
 
     score = Math.max(0, Math.min(100, score));
 
-    const autoSubmitBlockingFlags = new Set([
-      "EXTERNAL_CONTACT_REQUEST",
-      "OFF_PLATFORM_PAYMENT_REQUEST",
-      "UNCLEAR_SCOPE",
-      "CLOUD_INFRA_SCOPE",
-      "JAVA_SCOPE",
-      "FULL_ECOMMERCE_SCOPE",
-      "REACT_NATIVE_REVIEW_ONLY",
-      "PURE_DESIGN_SCOPE",
-      "WORDPRESS_COMPLEX_SCOPE",
-    ]);
-
     const hardRejectFlags = new Set([
       "EXTERNAL_CONTACT_REQUEST",
       "OFF_PLATFORM_PAYMENT_REQUEST",
@@ -308,15 +296,14 @@ export class OpportunityScoringService {
       "JAVA_SCOPE",
       "FULL_ECOMMERCE_SCOPE",
       "NATIVE_APP_SCOPE",
+      "PURE_DESIGN_SCOPE",
+      "WORDPRESS_COMPLEX_SCOPE",
     ]);
 
     const decisionHint =
       riskFlags.some((flag) => hardRejectFlags.has(flag)) || score < this.config.reviewMinScore
         ? "REJECTED"
-        : score >= this.config.autopilotMinScore &&
-            !riskFlags.some((flag) => autoSubmitBlockingFlags.has(flag))
-        ? "AUTO_SUBMIT"
-        : "REVIEW_REQUIRED";
+        : "AUTO_SUBMIT";
 
     return {
       score,
@@ -384,10 +371,7 @@ function detectComplexWordPressScope(source: string): boolean {
     /\blanding page\b/i,
     /\b(?:p[aá]gina|lp)\s+simples\b/i,
   ];
-
-  if (safeSimpleSignals.some((pattern) => pattern.test(source))) {
-    return false;
-  }
+  const hasSimpleMaintenanceSignal = safeSimpleSignals.some((pattern) => pattern.test(source));
 
   const hardSignals = [
     /\b(?:\d{2,}|vinte|trinta|quarenta|cinquenta)\s+p[aá]ginas?\b/i,
@@ -400,6 +384,26 @@ function detectComplexWordPressScope(source: string): boolean {
   if (hardSignals.some((pattern) => pattern.test(source))) {
     return true;
   }
+
+  const complexDeliverableSignals = [
+    /\btheme builder\b/i,
+    /\barchive\b/i,
+    /\bsingle post\b/i,
+    /\bheader\b/i,
+    /\bfooter\b/i,
+    /\bidentidade visual\b/i,
+    /\bdocumentar\b/i,
+    /\bpasso a passo\b/i,
+    /\bseo\b/i,
+    /\byoast\b/i,
+    /\bmenu de navega(?:ç|c)(?:a|ã)o\b/i,
+    /\bposts?\s+publicad/i,
+    /\btemplate\b/i,
+  ];
+  const hasComplexDeliverableSignals = complexDeliverableSignals.some((pattern) =>
+    pattern.test(source),
+  );
+  const enumeratedTaskCount = source.match(/\b\d+\./g)?.length ?? 0;
 
   let effortSignals = 0;
   const weightedSignals = [
@@ -420,6 +424,19 @@ function detectComplexWordPressScope(source: string): boolean {
     if (pattern.test(source)) {
       effortSignals += 1;
     }
+  }
+
+  if (
+    hasSimpleMaintenanceSignal &&
+    !hasComplexDeliverableSignals &&
+    enumeratedTaskCount < 3 &&
+    effortSignals < 4
+  ) {
+    return false;
+  }
+
+  if (hasComplexDeliverableSignals && (enumeratedTaskCount >= 3 || effortSignals >= 3)) {
+    return true;
   }
 
   return effortSignals >= 4;

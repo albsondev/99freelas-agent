@@ -80,14 +80,6 @@ export class DecisionEngineService {
 
     if (
       input.mode === "AUTOPILOT" &&
-      input.rejectUnclearScopeWhenAutopilot &&
-      !input.clearScope
-    ) {
-      blockingReasons.push("Escopo pouco claro para envio automatico.");
-    }
-
-    if (
-      input.mode === "AUTOPILOT" &&
       input.autoSubmitOnlyWithAverageBid &&
       !input.hasAverageBid
     ) {
@@ -140,27 +132,27 @@ export class DecisionEngineService {
       };
     }
 
-    const autopilotBlocked =
-      blockingReasons.length > 0 ||
-      input.compliance.status !== "APPROVED" ||
-      input.deadline.needsReview ||
-      input.pricing.warnings.length > 0 ||
-      (input.autoSubmitOnlyWithClearScope && !input.clearScope);
+    const autopilotBlocked = blockingReasons.length > 0;
 
     if (input.score.decisionHint === "AUTO_SUBMIT" && !autopilotBlocked) {
       return {
         decision: "AUTO_SUBMIT",
         canSubmitAutomatically: true,
-        reasons: [...reasons, "Projeto apto para autopilot com alta confianca."],
+        reasons: [
+          ...reasons,
+          input.clearScope
+            ? "Projeto aprovado para autopilot."
+            : "Projeto aprovado para autopilot mesmo com alguma incerteza operacional aceitavel.",
+        ],
         blockingReasons,
         riskFlags,
       };
     }
 
     return {
-      decision: "REVIEW_REQUIRED",
+      decision: "REJECTED",
       canSubmitAutomatically: false,
-      reasons: [...reasons, "Projeto exige revisao antes de qualquer envio real."],
+      reasons: [...reasons, "Projeto reprovado pelo motor de decisao."],
       blockingReasons,
       riskFlags,
     };

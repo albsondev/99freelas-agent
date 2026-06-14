@@ -53,6 +53,56 @@ describe("DecisionEngineService", () => {
     expect(result.canSubmitAutomatically).toBe(true);
   });
 
+  it("keeps autopilot permissive even with non-critical warnings", () => {
+    const service = new DecisionEngineService();
+    const result = service.decide({
+      mode: "AUTOPILOT",
+      score: {
+        score: 68,
+        decisionHint: "AUTO_SUBMIT",
+        reasons: ["Projeto aderente, mas com algum grau de incerteza."],
+        matchedSkills: ["PHP"],
+        missingSkills: [],
+        riskFlags: ["REACT_NATIVE_REVIEW_ONLY"],
+      },
+      pricing: {
+        amount: 350,
+        strategy: "HOURLY_ESTIMATE",
+        explanation: "ok",
+        warnings: ["Sem media de propostas; usando estimativa."],
+      },
+      deadline: {
+        deadlineDays: 3,
+        strategy: "COMPLEXITY_ESTIMATE",
+        explanation: "ok",
+        warnings: ["Prazo inferido por heuristica."],
+        needsReview: true,
+      },
+      compliance: {
+        status: "APPROVED",
+        flags: ["TOO_LONG"],
+        blockingReasons: [],
+      },
+      minimumProposalAmountBrl: 150,
+      minDeadlineDays: 2,
+      hasAverageBid: false,
+      clearScope: false,
+      duplicateDetected: false,
+      alreadySubmitted: false,
+      sessionValid: true,
+      formDetected: true,
+      captchaDetected: false,
+      dailyLimitReached: false,
+      hourlyLimitReached: false,
+      autoSubmitOnlyWithClearScope: true,
+      autoSubmitOnlyWithAverageBid: false,
+      rejectUnclearScopeWhenAutopilot: true,
+    });
+
+    expect(result.decision).toBe("AUTO_SUBMIT");
+    expect(result.canSubmitAutomatically).toBe(true);
+  });
+
   it("returns FAILED when operational blockers appear", () => {
     const service = new DecisionEngineService();
     const result = service.decide({

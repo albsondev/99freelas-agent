@@ -243,6 +243,8 @@ async function main() {
     command === "source:hunt" ||
     command === "source:smart"
   ) {
+    await resetPythonVisibleDaemonIfNeeded(env, command);
+
     const action: OpportunityFetchSweepAction =
       command === "source:recommended"
         ? "PROCESS_RECOMMENDED_NOTIFICATIONS"
@@ -313,6 +315,8 @@ async function main() {
   }
 
   if (command === "autopilot:loop") {
+    await resetPythonVisibleDaemonIfNeeded(env, command);
+
     const maxCycles = readNumberOption("--max-cycles");
     const result = await runContinuousAutopilot(env, {
       batchSize: readNumberOption("--batch-size") ?? 3,
@@ -555,6 +559,28 @@ async function main() {
       2,
     ),
   );
+}
+
+async function resetPythonVisibleDaemonIfNeeded(
+  env: ReturnType<typeof loadWorkerEnv>,
+  command: string,
+): Promise<void> {
+  if (env.BROWSER_AUTOMATION_RUNTIME !== "python-playwright" || env.BROWSER_HEADLESS) {
+    return;
+  }
+
+  console.log(
+    `[Sessao visual] Reiniciando o daemon do navegador antes de ${command} para evitar sessao antiga travada...`,
+  );
+
+  await shutdown99FreelasPythonRunnerDaemon({
+    browserName: env.PYTHON_BROWSER_NAME,
+    headless: env.BROWSER_HEADLESS,
+    profileDir: env.PYTHON_BROWSER_PROFILE_DIR,
+    pythonExecutable: env.PYTHON_EXECUTABLE,
+    screenshotDir: env.BROWSER_SCREENSHOT_DIR,
+    storageStatePath: env.PYTHON_BROWSER_STORAGE_STATE_PATH,
+  });
 }
 
 function resolveProposalLlmProvider(env: ReturnType<typeof loadWorkerEnv>): ProposalLlmProvider {

@@ -60,18 +60,12 @@ export class ProposalSubmissionGuardrailsService {
 
     if (input.proposal.complianceStatus === "BLOCKED") {
       blockingReasons.push("Compliance bloqueou a proposta para envio real.");
-    } else if (input.proposal.complianceStatus !== "APPROVED") {
-      reviewReasons.push("Compliance ainda nao aprovou a proposta para envio real.");
     }
 
     if (input.opportunity.decision === "REJECTED" || input.opportunity.decision === "FAILED") {
       blockingReasons.push("A oportunidade nao esta apta para submissao automatica.");
     } else if (input.opportunity.decision !== "AUTO_SUBMIT") {
       reviewReasons.push("A oportunidade ainda nao foi marcada como AUTO_SUBMIT.");
-    }
-
-    if ((input.opportunity.score ?? 0) < input.autopilotMinScore) {
-      blockingReasons.push("Score abaixo do minimo configurado para envio real.");
     }
 
     const hardRiskFlags = input.opportunity.riskFlags.filter((flag) =>

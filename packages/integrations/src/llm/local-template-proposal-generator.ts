@@ -14,14 +14,36 @@ import type {
 } from "./openai-proposal-generator.js";
 
 const LOCAL_TEMPLATE_MODEL = "local-template-v1";
-const LOCAL_TEMPLATE_PROMPT_VERSION = "proposal-template-v1";
+const LOCAL_TEMPLATE_PROMPT_VERSION = "proposal-template-v3";
 const MAX_DETAILS_TEXT_LENGTH = 1200;
 
-type ProposalVoiceStyle =
-  | "consultivo"
-  | "objetivo"
-  | "parceiro"
-  | "estrategico";
+type ProjectCategory =
+  | "institutional-site"
+  | "landing-page"
+  | "wordpress-adjustment"
+  | "system"
+  | "integration"
+  | "frontend"
+  | "bugfix"
+  | "dashboard"
+  | "pdf-documents"
+  | "ai-project"
+  | "generic-web";
+
+type ProjectComplexity = "simple" | "medium" | "complex" | "critical";
+
+type ProjectContext = {
+  category: ProjectCategory;
+  complexity: ProjectComplexity;
+  source: string;
+  title: string;
+  description: string;
+  focusSkills: string[];
+  techSignals: string[];
+  featureSignals: string[];
+  nicheSignals: string[];
+  sensitiveSignals: string[];
+};
 
 type SerializedFreelancerProfile = {
   displayName: string;
@@ -65,40 +87,59 @@ const DEFAULT_PROFILE: SerializedFreelancerProfile = {
 export function createLocalTemplateProposalProvider(): ProposalLlmProvider {
   return {
     generate(input) {
-      return Promise.resolve(buildLocalTemplateProposal(input));
+      return Promise.resolve(buildLocalContextProposal(input));
     },
   };
 }
 
-function buildLocalTemplateProposal(
+function buildLocalContextProposal(
   input: ProposalGenerationInput,
 ): ProposalGenerationResult {
   const profile = resolveFreelancerProfile(input.freelancerProfile);
-  const focusSkills = pickFocusSkills(input.opportunity, profile, input.matchedSkills);
-  const projectType = inferProjectType(input.opportunity, focusSkills);
-  const cautionMode = shouldUseCautiousTone(input, profile);
-  const voiceStyle = selectVoiceStyle(input);
-  const clientGoal = inferClientGoal(input.opportunity, projectType);
+  const context = buildProjectContext(input, profile);
+  const objectiveSummary = buildObjectiveSummary(context);
+  const criticalPoint = buildCriticalPoint(context);
+  const experienceSentence = buildExperienceSentence(context);
+  const approachSentence = buildApproachSentence(context);
+  const valueSentence = buildValueSentence(context);
+  const flexibilitySentence = buildFlexibilitySentence(input, context);
+  const closingSentence = buildClosingSentence(context);
 
   const technicalSummary = compactWhitespace(
     [
-      `Abordagem focada em ${projectType}`,
+      `Abordagem focada em ${humanizeCategory(context.category)}`,
       `com entrega planejada em ${input.deadlineDays} dias`,
-      `e prioridade em ${joinListForSentence(focusSkills.slice(0, 3))}.`,
+      `e prioridade em ${joinListForSentence(context.focusSkills.slice(0, 3))}.`,
     ].join(" "),
   );
 
   const paragraphs = [
-    buildContextParagraph(input, projectType, focusSkills, cautionMode, voiceStyle, clientGoal),
-    buildExecutionParagraph(input, focusSkills, cautionMode, voiceStyle, clientGoal),
-    buildRiskControlParagraph(input, cautionMode, voiceStyle),
+    sanitizeProposalText(
+      [
+        "Olá, tudo bem?",
+        buildOpening(context),
+        `Pelo que entendi, o objetivo é ${objectiveSummary}.`,
+        `Vejo como ponto importante ${criticalPoint}.`,
+        experienceSentence,
+      ].join(" "),
+    ),
+    sanitizeProposalText(
+      [
+        approachSentence,
+        buildDeliverablesSentence(context),
+        buildQualitySentence(context),
+      ].join(" "),
+    ),
+    sanitizeProposalText(
+      [valueSentence, flexibilitySentence, closingSentence].join(" "),
+    ),
   ];
 
   const detailsText = fitDetailsText(paragraphs);
-  const assumptions = buildAssumptions(input, projectType);
-  const questions = buildQuestions(input, projectType);
-  const risks = buildRisks(input, cautionMode);
-  const qualityScore = calculateQualityScore(input, focusSkills, cautionMode);
+  const assumptions = buildAssumptions(input, context);
+  const questions = buildQuestions(input, context);
+  const risks = buildRisks(context);
+  const qualityScore = calculateQualityScore(input, context);
 
   const draft: ProposalDraft = proposalDraftSchema.parse({
     technicalSummary,
@@ -146,6 +187,37 @@ function resolveFreelancerProfile(
   };
 }
 
+function buildProjectContext(
+  input: ProposalGenerationInput,
+  profile: SerializedFreelancerProfile,
+): ProjectContext {
+  const title = compactWhitespace(input.opportunity.title ?? "");
+  const description = compactWhitespace(input.opportunity.description ?? "");
+  const source = compactWhitespace(
+    `${title} ${description} ${input.opportunity.category ?? ""}`.toLowerCase(),
+  );
+  const focusSkills = pickFocusSkills(input.opportunity, profile, input.matchedSkills);
+  const techSignals = extractTechnologySignals(source, focusSkills);
+  const featureSignals = extractFeatureSignals(source);
+  const nicheSignals = extractNicheSignals(source);
+  const sensitiveSignals = extractSensitiveSignals(source);
+  const category = inferCategory(source, techSignals, featureSignals);
+  const complexity = inferComplexity(source, category, sensitiveSignals, featureSignals);
+
+  return {
+    category,
+    complexity,
+    source,
+    title,
+    description,
+    focusSkills,
+    techSignals,
+    featureSignals,
+    nicheSignals,
+    sensitiveSignals,
+  };
+}
+
 function pickFocusSkills(
   opportunity: Opportunity,
   profile: SerializedFreelancerProfile,
@@ -161,192 +233,464 @@ function pickFocusSkills(
   return [...new Set(combined.map((item) => compactWhitespace(item)).filter(Boolean))].slice(0, 5);
 }
 
-function inferProjectType(opportunity: Opportunity, focusSkills: string[]): string {
-  const source = compactWhitespace(
-    `${opportunity.title ?? ""} ${opportunity.description ?? ""} ${opportunity.category ?? ""}`.toLowerCase(),
-  );
+function extractTechnologySignals(source: string, focusSkills: string[]): string[] {
+  const catalog: Array<{ pattern: RegExp; label: string }> = [
+    { pattern: /\bwordpress\b/i, label: "WordPress" },
+    { pattern: /\belementor\b/i, label: "Elementor" },
+    { pattern: /\breact(?:\.js)?\b/i, label: "React" },
+    { pattern: /\bnext(?:\.js)?\b/i, label: "Next.js" },
+    { pattern: /\bvue(?:\.js)?\b/i, label: "Vue.js" },
+    { pattern: /\bnode(?:\.js)?\b/i, label: "Node.js" },
+    { pattern: /\btypescript\b/i, label: "TypeScript" },
+    { pattern: /\bjavascript\b/i, label: "JavaScript" },
+    { pattern: /\bphp\b/i, label: "PHP" },
+    { pattern: /\bsupabase\b/i, label: "Supabase" },
+    { pattern: /\bapi\b/i, label: "API REST" },
+    { pattern: /\bhtml2canvas\b/i, label: "html2canvas" },
+    { pattern: /\bjspdf\b/i, label: "jsPDF" },
+    { pattern: /\bgemini|google ai|ia\b/i, label: "integração com IA" },
+  ];
 
-  if (/\bbug|erro|corre(?:ç|c)[aã]o|ajuste|manuten/.test(source)) {
-    return "correção de bugs e estabilização";
-  }
+  const labels = catalog
+    .filter((item) => item.pattern.test(source))
+    .map((item) => item.label);
 
-  if (/\blanding page\b|\blp\b/.test(source)) {
-    return "landing page";
-  }
-
-  if (focusSkills.some((skill) => skill === "WordPress")) {
-    return "ajustes ou evolução em WordPress";
-  }
-
-  if (focusSkills.some((skill) => skill === "Next.js")) {
-    return "projeto web em Next.js";
-  }
-
-  if (focusSkills.some((skill) => skill === "React")) {
-    return "projeto web em React";
-  }
-
-  if (focusSkills.some((skill) => skill === "Vue.js")) {
-    return "projeto web em Vue.js";
-  }
-
-  if (focusSkills.some((skill) => skill === "PHP")) {
-    return "projeto web em PHP";
-  }
-
-    return "projeto web sob medida";
+  return [...new Set([...focusSkills, ...labels])].slice(0, 5);
 }
 
-function shouldUseCautiousTone(
-  input: ProposalGenerationInput,
-  profile: SerializedFreelancerProfile,
-): boolean {
-  const source = compactWhitespace(
-    `${input.opportunity.title ?? ""} ${input.opportunity.description ?? ""}`.toLowerCase(),
-  );
+function extractFeatureSignals(source: string): string[] {
+  const catalog: Array<{ pattern: RegExp; label: string }> = [
+    { pattern: /\bblog\b/i, label: "blog" },
+    { pattern: /\bseo\b/i, label: "SEO" },
+    { pattern: /\bwhatsapp\b/i, label: "integração com WhatsApp" },
+    { pattern: /\bformul[áa]rio\b/i, label: "formulários" },
+    { pattern: /\bresponsiv/i, label: "responsividade" },
+    { pattern: /\bdashboard\b/i, label: "dashboard" },
+    { pattern: /\bapi\b/i, label: "integração com API" },
+    { pattern: /\bwebhook\b/i, label: "webhooks" },
+    { pattern: /\bpdf\b/i, label: "geração de PDF" },
+    { pattern: /\blogin\b/i, label: "fluxo de login" },
+    { pattern: /\bfiltros?\b/i, label: "filtros" },
+    { pattern: /\bexporta(?:ç|c)(?:a|ã)o\b/i, label: "exportação de dados" },
+    { pattern: /\bpainel administrativo\b/i, label: "painel administrativo" },
+    { pattern: /\blanding page\b|\blp\b/i, label: "landing page" },
+    { pattern: /\bsite institucional\b|\bsite profissional\b/i, label: "site institucional" },
+    { pattern: /\bportf[oó]lio\b/i, label: "portfólio" },
+    { pattern: /\bcontato\b/i, label: "captação de contatos" },
+    { pattern: /\bbug|erro|corre(?:ç|c)(?:a|ã)o|ajuste\b/i, label: "correções e ajustes" },
+    { pattern: /\bpermiss(?:ã|a)o|permiss(?:o|õ)es\b/i, label: "controle de permissões" },
+  ];
 
-  return (
-    input.missingSkills.length >= 2 ||
-    input.riskFlags.includes("UNCLEAR_SCOPE") ||
-    profile.blockedProjectTypes.some((item) =>
-      source.includes(compactWhitespace(item).toLowerCase()),
-    )
-  );
+  return [...new Set(catalog.filter((item) => item.pattern.test(source)).map((item) => item.label))]
+    .slice(0, 6);
 }
 
-function buildContextParagraph(
-  input: ProposalGenerationInput,
-  projectType: string,
-  focusSkills: string[],
-  cautionMode: boolean,
-  voiceStyle: ProposalVoiceStyle,
-  clientGoal: string,
-): string {
-  const title = truncateText(
-    compactWhitespace(input.opportunity.title ?? "este projeto"),
-    120,
-  );
-  const skillBlock = joinListForSentence(focusSkills.slice(0, 3));
-  const openings: Record<ProposalVoiceStyle, string> = {
-    consultivo: `Li com atenção o projeto ${title} e faz bastante sentido conduzir isso com um caminho bem prático, principalmente para ${clientGoal}.`,
-    objetivo: `Vi o projeto ${title} e entendi bem o que precisa sair do papel aqui: ${clientGoal}.`,
-    parceiro: `Seu projeto ${title} me parece um daqueles casos em que vale entrar com agilidade, organização e visão de entrega para ${clientGoal}.`,
-    estrategico: `Analisei o projeto ${title} pensando no resultado final que você quer alcançar, e dá para conduzir isso de forma enxuta para ${clientGoal}.`,
-  };
-  const confidence: Record<ProposalVoiceStyle, string> = {
-    consultivo: `Tenho familiaridade real com ${skillBlock}, então consigo começar pelo que mais destrava o projeto sem complicar o processo.`,
-    objetivo: `Tenho prática com ${skillBlock}, o que ajuda a atacar exatamente os pontos que costumam gerar retrabalho nesse tipo de demanda.`,
-    parceiro: `Como já trabalho com ${skillBlock}, consigo tocar esse tipo de entrega com foco em clareza, ritmo e evolução contínua.`,
-    estrategico: `A combinação de ${skillBlock} ajuda bastante a transformar esse escopo em uma entrega objetiva, com menos risco e mais previsibilidade.`,
-  };
+function extractNicheSignals(source: string): string[] {
+  const catalog: Array<{ pattern: RegExp; label: string }> = [
+    { pattern: /\badvogad|advocacia|jur[ií]dic/i, label: "jurídico" },
+    { pattern: /\bmedic|sa[úu]de|laudo|cl[ií]nic/i, label: "saúde" },
+    { pattern: /\bconsultoria\b/i, label: "consultoria" },
+    { pattern: /\beduca(?:ç|c)(?:a|ã)o|escola|curso\b/i, label: "educação" },
+    { pattern: /\be-?commerce|loja\b/i, label: "comércio" },
+  ];
 
-  if (cautionMode) {
-    return compactWhitespace(
-      `${openings[voiceStyle]} Antes de ampliar o escopo, eu prefiro validar os pontos críticos e alinhar o que realmente é prioridade. ${confidence[voiceStyle]}`,
-    );
+  return [...new Set(catalog.filter((item) => item.pattern.test(source)).map((item) => item.label))]
+    .slice(0, 3);
+}
+
+function extractSensitiveSignals(source: string): string[] {
+  const catalog: Array<{ pattern: RegExp; label: string }> = [
+    { pattern: /\bpagamento|pix|webhook|saldo|saque|comiss[aã]o\b/i, label: "financeiro" },
+    { pattern: /\bmedic|sa[úu]de|laudo\b/i, label: "saúde" },
+    { pattern: /\bjur[ií]dic|advocacia\b/i, label: "jurídico" },
+    { pattern: /\bdados sens[ií]veis|credenciais|autentica(?:ç|c)(?:a|ã)o\b/i, label: "dados sensíveis" },
+    { pattern: /\bia\b|\bgemini\b|\bopenai\b|\bgoogle ai\b/i, label: "IA" },
+  ];
+
+  return [...new Set(catalog.filter((item) => item.pattern.test(source)).map((item) => item.label))]
+    .slice(0, 4);
+}
+
+function inferCategory(
+  source: string,
+  techSignals: string[],
+  featureSignals: string[],
+): ProjectCategory {
+  if (/\bpdf\b|\bhtml2canvas\b|\bjspdf\b/i.test(source)) {
+    return "pdf-documents";
   }
 
-  return compactWhitespace(`${openings[voiceStyle]} ${confidence[voiceStyle]}`);
-}
-
-function buildExecutionParagraph(
-  input: ProposalGenerationInput,
-  focusSkills: string[],
-  cautionMode: boolean,
-  voiceStyle: ProposalVoiceStyle,
-  clientGoal: string,
-): string {
-  const skillsTail = joinListForSentence(focusSkills.slice(0, 2));
-  const executionVariants: Record<ProposalVoiceStyle, string> = {
-    consultivo: `A minha forma de conduzir seria entrar primeiro no que mais impacta ${clientGoal}, revisar o cenário atual e evoluir a entrega em etapas curtas, para você conseguir acompanhar tudo com segurança.`,
-    objetivo: `A ideia aqui é ir direto ao ponto: revisar o que já existe, corrigir o que trava o avanço e deixar a entrega pronta para funcionar de forma estável sem enrolação.`,
-    parceiro: `Eu costumo tocar esse tipo de projeto de forma bem próxima do cliente: organizo as prioridades, executo o que destrava mais rápido e mantenho a comunicação simples durante todo o processo.`,
-    estrategico: `A condução que faz mais sentido aqui é organizar o escopo por impacto, resolver primeiro o que acelera o resultado e evitar desperdício de tempo com etapas que não agregam agora.`,
-  };
-  const closingVariants: Record<ProposalVoiceStyle, string> = {
-    consultivo: `Consigo trabalhar com ${skillsTail} dentro de uma janela realista de ${input.deadlineDays} dias, mantendo tudo claro pela plataforma e sem prometer além do necessário.`,
-    objetivo: `Consigo entregar isso usando ${skillsTail} em ${input.deadlineDays} dias, com comunicação objetiva e foco no que realmente precisa funcionar.`,
-    parceiro: `Posso tocar essa entrega com ${skillsTail} ao longo de ${input.deadlineDays} dias, deixando o processo leve para você acompanhar e seguro para colocar em produção.`,
-    estrategico: `Com ${skillsTail}, consigo conduzir esse trabalho em ${input.deadlineDays} dias de forma competitiva, organizada e com atenção para evitar retrabalho depois.`,
-  };
-
-  if (cautionMode) {
-    return compactWhitespace(
-      `${executionVariants[voiceStyle]} Faço isso validando primeiro os pontos críticos e abrindo o restante do escopo à medida que o projeto for ficando mais claro. ${closingVariants[voiceStyle]}`,
-    );
+  if (/\bgemini\b|\bgoogle ai\b|\bopenai\b|\bia\b/i.test(source)) {
+    return "ai-project";
   }
 
-  return compactWhitespace(`${executionVariants[voiceStyle]} ${closingVariants[voiceStyle]}`);
+  if (/\blanding page\b|\blp\b/i.test(source)) {
+    return "landing-page";
+  }
+
+  if (/\bwordpress\b|\belementor\b/i.test(source) && /\bbug|erro|ajuste|blog|layout|responsiv/i.test(source)) {
+    return "wordpress-adjustment";
+  }
+
+  if (/\bsite institucional\b|\bsite profissional\b|\bportf[oó]lio\b/i.test(source)) {
+    return "institutional-site";
+  }
+
+  if (/\bbug|erro|corre(?:ç|c)(?:a|ã)o|ajuste\b/i.test(source)) {
+    return "bugfix";
+  }
+
+  if (/\bapi\b|\bwebhook\b|\bpagamento\b/i.test(source)) {
+    return "integration";
+  }
+
+  if (/\bdashboard\b|\bpainel administrativo\b/i.test(source)) {
+    return "dashboard";
+  }
+
+  if (/\bsistema\b|\bárea logada\b|\bpainel\b|\bgest[aã]o\b/i.test(source)) {
+    return "system";
+  }
+
+  if (techSignals.some((item) => ["React", "Next.js", "Vue.js"].includes(item))) {
+    return "frontend";
+  }
+
+  if (featureSignals.includes("site institucional")) {
+    return "institutional-site";
+  }
+
+  return "generic-web";
 }
 
-function buildRiskControlParagraph(
+function inferComplexity(
+  source: string,
+  category: ProjectCategory,
+  sensitiveSignals: string[],
+  featureSignals: string[],
+): ProjectComplexity {
+  if (sensitiveSignals.length > 0) {
+    return "critical";
+  }
+
+  if (
+    ["system", "integration", "dashboard", "pdf-documents", "ai-project"].includes(category) ||
+    featureSignals.length >= 4
+  ) {
+    return "complex";
+  }
+
+  if (
+    ["institutional-site", "landing-page", "wordpress-adjustment", "frontend", "bugfix"].includes(
+      category,
+    ) ||
+    featureSignals.length >= 2
+  ) {
+    return "medium";
+  }
+
+  return "simple";
+}
+
+function buildOpening(context: ProjectContext): string {
+  const variants = [
+    "Li a descrição do projeto com atenção e acredito que consigo te ajudar com essa demanda.",
+    "Analisei sua solicitação com cuidado e vejo que dá para conduzir esse projeto com segurança.",
+    "Seu projeto está claro e acredito que posso contribuir com uma entrega bem estruturada.",
+    "Consigo te ajudar com essa demanda, principalmente porque o escopo mostra exatamente onde precisam estar os cuidados técnicos.",
+  ];
+
+  return variants[hashString(`${context.title}|${context.category}`) % variants.length] ?? variants[0]!;
+}
+
+function buildObjectiveSummary(context: ProjectContext): string {
+  const focus = joinListForSentence(context.featureSignals.slice(0, 3));
+  const categoryText = humanizeCategory(context.category);
+
+  if (context.featureSignals.length === 0) {
+    return `${normalizeSentence(context.title || categoryText)}, com foco em uma entrega organizada e pronta para uso`;
+  }
+
+  return `${normalizeSentence(context.title || categoryText)}, envolvendo ${focus}, com foco em um resultado funcional e bem estruturado`;
+}
+
+function buildCriticalPoint(context: ProjectContext): string {
+  const source = context.source;
+
+  if (context.category === "pdf-documents") {
+    return "garantir previsibilidade visual no PDF e fidelidade aos dados exibidos, para que o resultado final fique confiável e sem quebra de layout";
+  }
+
+  if (context.category === "integration") {
+    return "tratar a integração de forma segura, principalmente no controle de credenciais, retornos da API e consistência das regras do fluxo";
+  }
+
+  if (context.category === "dashboard" || context.category === "system") {
+    return "estruturar os fluxos principais com clareza para que a entrega fique estável, fácil de manter e sem impacto desnecessário em outras partes do sistema";
+  }
+
+  if (context.category === "landing-page") {
+    return "organizar a hierarquia visual e os pontos de conversão para que a página fique clara, profissional e preparada para gerar contato";
+  }
+
+  if (
+    context.category === "institutional-site" ||
+    context.category === "wordpress-adjustment"
+  ) {
+    return "garantir que a estrutura visual, a responsividade e a organização do conteúdo transmitam credibilidade e funcionem bem em computador e celular";
+  }
+
+  if (context.category === "bugfix" || /\bbug|erro|ajuste\b/i.test(source)) {
+    return "identificar o ponto exato do ajuste e corrigir sem comprometer outras partes do fluxo já existente";
+  }
+
+  if (context.complexity === "critical") {
+    return `conduzir a implementação com cuidado técnico e previsibilidade, principalmente por envolver ${joinListForSentence(
+      context.sensitiveSignals.slice(0, 2),
+    )}`;
+  }
+
+  return "alinhar uma execução limpa, organizada e sem retrabalho, para que a solução fique bem aplicada do início ao fim";
+}
+
+function buildExperienceSentence(context: ProjectContext): string {
+  const skills = joinListForSentence(context.focusSkills.slice(0, 4));
+  const relatedNeed =
+    context.featureSignals.length > 0
+      ? joinListForSentence(context.featureSignals.slice(0, 3))
+      : humanizeCategory(context.category);
+
+  return `Tenho experiência com ${skills} e com entregas desse tipo, especialmente em demandas que envolvem ${relatedNeed}.`;
+}
+
+function buildApproachSentence(context: ProjectContext): string {
+  const steps = buildApproachSteps(context);
+  const categoryLead =
+    context.category === "bugfix" || context.category === "system" || context.category === "dashboard"
+      ? "Começando pelo entendimento do funcionamento atual e pelo ponto exato do ajuste"
+      : context.category === "wordpress-adjustment" || context.category === "institutional-site"
+        ? "Começando pela leitura da estrutura atual do site e pela validação dos pontos principais"
+        : "";
+  const prefix =
+    context.complexity === "simple"
+      ? "Minha abordagem seria"
+      : context.complexity === "critical"
+        ? "Minha sugestão aqui seria conduzir a entrega em etapas bem claras"
+        : "Minha abordagem seria seguir uma execução organizada";
+  const communicationSuffix = " com comunicação clara durante o processo";
+
+  const cautionSuffix =
+    context.source.includes("escopo aberto") ||
+    context.source.includes("não detalhad") ||
+    context.source.includes("nao detalhad")
+      ? " Faria isso validando primeiro os pontos críticos e alinhando o restante logo no começo."
+      : "";
+
+  if (categoryLead) {
+    return `${categoryLead}, ${prefix.toLowerCase()}${communicationSuffix}: ${steps}.${cautionSuffix}`;
+  }
+
+  return `${prefix}${communicationSuffix}: ${steps}.${cautionSuffix}`;
+}
+
+function buildApproachSteps(context: ProjectContext): string {
+  const steps =
+    context.complexity === "critical" || context.complexity === "complex"
+      ? [
+          "analisar a estrutura atual e validar as prioridades",
+          "definir a melhor abordagem técnica para o fluxo principal",
+          "implementar os ajustes ou funcionalidades centrais",
+          "testar os pontos essenciais para evitar regressões",
+          "entregar tudo organizado e pronto para uso",
+        ]
+      : [
+          "analisar a estrutura atual",
+          "validar a melhor forma de implementação",
+          "executar os ajustes principais",
+          "testar o funcionamento final",
+          "entregar tudo alinhado e funcionando corretamente",
+        ];
+
+  return steps.join("; ");
+}
+
+function buildDeliverablesSentence(context: ProjectContext): string {
+  const features = context.featureSignals.slice(0, 3);
+  const techs = context.techSignals.slice(0, 3);
+
+  if (features.length === 0 && techs.length === 0) {
+    return "A entrega pode incluir a implementação principal, testes de validação e os ajustes finais necessários para deixar tudo consistente.";
+  }
+
+  if (features.length === 0) {
+    return `A entrega pode incluir a condução técnica usando ${joinListForSentence(
+      techs,
+    )}, sempre com foco no que mais impacta o resultado final do projeto.`;
+  }
+
+  if (techs.length === 0) {
+    return `A entrega pode incluir a condução de ${joinListForSentence(
+      features,
+    )}, sempre com foco no que mais impacta o resultado final do projeto.`;
+  }
+
+  const outcomeTail =
+    context.category === "integration" || context.category === "system" || context.category === "dashboard" || context.category === "bugfix"
+      ? "com foco em estabilidade e manutenção futura"
+      : context.category === "wordpress-adjustment" || context.category === "institutional-site" || context.category === "landing-page"
+        ? "com foco em responsividade, clareza visual e experiência do visitante"
+        : "com foco no que mais impacta o resultado final do projeto";
+
+  return `A entrega pode incluir a condução de ${joinListForSentence(
+    features,
+  )}, trabalhando isso com ${joinListForSentence(
+    techs,
+  )} e ${outcomeTail}.`;
+}
+
+function buildQualitySentence(context: ProjectContext): string {
+  const parts = ["organização", "clareza de execução"];
+
+  if (context.category === "landing-page" || context.category === "institutional-site") {
+    parts.push("responsividade");
+    parts.push("credibilidade visual");
+  }
+
+  if (context.category === "integration" || context.category === "system") {
+    parts.push("segurança");
+    parts.push("facilidade de manutenção");
+  }
+
+  if (context.category === "pdf-documents") {
+    parts.push("previsibilidade visual");
+    parts.push("consistência dos dados");
+  }
+
+  return `Também cuido para que a entrega fique sólida em ${joinListForSentence(
+    [...new Set(parts)].slice(0, 4),
+  )}, evitando soluções apressadas que gerem retrabalho depois.`;
+}
+
+function buildValueSentence(context: ProjectContext): string {
+  if (context.category === "landing-page") {
+    return "Trabalho com comunicação clara ao longo da execução e também posso observar pontos de melhoria durante o processo, principalmente em hierarquia visual, clareza da oferta e posicionamento dos CTAs, caso isso faça sentido para o projeto.";
+  }
+
+  if (context.category === "institutional-site" || context.category === "wordpress-adjustment") {
+    return "Trabalho com comunicação clara ao longo da execução e também posso observar pontos de melhoria durante o processo, principalmente em usabilidade, organização visual, SEO inicial e experiência do visitante, caso isso faça sentido para o projeto.";
+  }
+
+  if (context.category === "integration" || context.category === "system" || context.category === "dashboard") {
+    return "Trabalho com comunicação clara ao longo da execução e também posso observar pontos de melhoria durante o processo, principalmente em organização do fluxo, estabilidade, melhorias técnicas, segurança e manutenção futura, caso isso faça sentido para o projeto.";
+  }
+
+  return "Trabalho com comunicação clara ao longo da execução e também posso observar pontos de melhoria durante o processo, principalmente em clareza da solução, estabilidade e manutenção futura, caso isso faça sentido para o projeto.";
+}
+
+function buildFlexibilitySentence(
   input: ProposalGenerationInput,
-  cautionMode: boolean,
-  voiceStyle: ProposalVoiceStyle,
+  context: ProjectContext,
 ): string {
   const hasAverageBid =
     typeof input.opportunity.averageBidAmount === "number" &&
     input.opportunity.averageBidAmount > 0;
-  const scopeHint = input.riskFlags.includes("UNCLEAR_SCOPE")
-    ? "Como o escopo ainda pede algumas confirmações, eu prefiro alinhar isso logo no começo para evitar retrabalho e expectativa desalinhada."
-    : "Se aparecer algum detalhe sensível de regra de negócio, integração ou legado, eu costumo tratar isso cedo para a entrega seguir redonda.";
-  const commercialHint = hasAverageBid
-    ? "Também ajustei a proposta para ficar competitiva em relação ao que o mercado está praticando neste projeto."
-    : "A proposta foi pensada para ficar atrativa, coerente e viável dentro do cenário que o projeto mostra hoje.";
-  const closes: Record<ProposalVoiceStyle, string> = {
-    consultivo: "Se fizer sentido para você, eu posso começar de forma organizada e ir te atualizando por etapas.",
-    objetivo: "Se a ideia for resolver isso sem complicar, consigo seguir bem nessa linha.",
-    parceiro: "A intenção é justamente facilitar a sua decisão e tocar isso com tranquilidade.",
-    estrategico: "O foco é te ajudar a fechar esse projeto com uma entrega segura e bem encaminhada desde o início.",
-  };
 
-  if (cautionMode) {
-    return compactWhitespace(`${scopeHint} ${commercialHint} ${closes[voiceStyle]}`);
+  if (context.complexity === "critical" || context.complexity === "complex") {
+    return hasAverageBid
+      ? "Sobre prazo e valor, deixei uma estimativa inicial com base nas informações disponíveis e na média praticada hoje, mas posso alinhar melhor conforme prioridade, urgência e detalhes técnicos da entrega."
+      : "Sobre prazo e valor, deixei uma estimativa inicial com base nas informações disponíveis, mas estou aberto a alinhar conforme escopo real, prioridade, urgência e detalhes da implementação.";
   }
 
-  return compactWhitespace(`${commercialHint} ${scopeHint} ${closes[voiceStyle]}`);
+  return hasAverageBid
+    ? "Sobre prazo e valor, deixei uma estimativa inicial com base nas informações disponíveis e no cenário atual de mercado, mas posso ajustar conforme o volume real de trabalho e a prioridade da entrega."
+    : "Sobre prazo e valor, deixei uma estimativa inicial com base nas informações disponíveis, mas estou aberto a alinhar conforme o volume de ajustes e o nível de personalização necessário.";
+}
+
+function buildClosingSentence(context: ProjectContext): string {
+  if (context.complexity === "critical") {
+    return "Posso conduzir esse projeto com comunicação clara, cuidado técnico e foco em uma entrega funcional, estável e bem acabada, mantendo você acompanhado ao longo do processo.";
+  }
+
+  return "Posso conduzir esse projeto com comunicação clara, organização e foco em uma entrega funcional, bem acabada e pronta para uso, para que você consiga acompanhar o andamento com tranquilidade.";
 }
 
 function buildAssumptions(
   input: ProposalGenerationInput,
-  projectType: string,
+  context: ProjectContext,
 ): string[] {
-  const items = [
-    `O escopo principal está concentrado em ${projectType}.`,
-    "O acesso ao ambiente ou aos arquivos necessários será disponibilizado no início.",
+  const assumptions = [
+    `O escopo principal está concentrado em ${humanizeCategory(context.category)}.`,
+    "O acesso ao ambiente, arquivos ou credenciais necessários será disponibilizado no início da execução.",
     input.opportunity.averageDeadlineDays
       ? `A expectativa de prazo do mercado para este projeto gira em torno de ${input.opportunity.averageDeadlineDays} dias.`
-      : `O prazo proposto de ${input.deadlineDays} dias considera uma entrega enxuta e priorizada.`,
+      : `O prazo proposto de ${input.deadlineDays} dias considera uma entrega enxuta, priorizada e sem prometer correria artificial.`,
   ];
 
-  return items.slice(0, 3);
+  return assumptions.slice(0, 3);
 }
 
 function buildQuestions(
   input: ProposalGenerationInput,
-  projectType: string,
+  context: ProjectContext,
 ): string[] {
+  const categoryText = humanizeCategory(context.category);
+  const feature = buildPriorityFocus(context);
+
   const items = [
-    `Existe algum fluxo mais crítico dentro de ${projectType} que precisa ser priorizado já na primeira entrega?`,
+    `Existe algum ponto dentro de ${categoryText} que precise ser priorizado já na primeira entrega, principalmente em ${feature}?`,
     "Você já possui ambiente de homologação ou o ajuste precisa acontecer direto no ambiente atual?",
     input.opportunity.proposalCount && input.opportunity.proposalCount > 10
       ? "Há alguma restrição técnica ou de negócio que ainda não apareceu na descrição pública do projeto?"
-      : "Existe alguma referência visual ou técnica que você espera que seja seguida?",
+      : "Existe alguma referência visual, técnica ou funcional que você espera que seja seguida?",
   ];
 
   return items.slice(0, 3);
 }
 
-function buildRisks(
-  input: ProposalGenerationInput,
-  cautionMode: boolean,
-): string[] {
+function buildPriorityFocus(context: ProjectContext): string {
+  const firstFeature = context.featureSignals[0];
+  const categoryText = humanizeCategory(context.category);
+
+  if (firstFeature && firstFeature !== categoryText) {
+    return firstFeature;
+  }
+
+  if (context.category === "institutional-site" || context.category === "wordpress-adjustment") {
+    return "estrutura visual, responsividade e organização do conteúdo";
+  }
+
+  if (context.category === "landing-page") {
+    return "hierarquia visual e conversão";
+  }
+
+  if (context.category === "bugfix" || context.category === "system" || context.category === "dashboard") {
+    return "fluxo principal e estabilidade";
+  }
+
+  if (context.category === "integration") {
+    return "integração principal e consistência do fluxo";
+  }
+
+  if (context.category === "pdf-documents") {
+    return "layout final e consistência dos dados";
+  }
+
+  return "o fluxo principal";
+}
+
+function buildRisks(context: ProjectContext): string[] {
+  const scopeIsOpen =
+    context.source.includes("escopo aberto") ||
+    context.source.includes("não detalhad") ||
+    context.source.includes("nao detalhad");
   const items = [
-    input.riskFlags.includes("UNCLEAR_SCOPE")
+    scopeIsOpen
       ? "Escopo ainda parcialmente aberto, com chance de ajuste fino após a análise inicial."
-      : "Dependências legadas ou regras escondidas podem exigir ajuste fino após a validação técnica.",
-    cautionMode
-      ? "Se houver stack paralela não descrita, pode ser necessário replanejar parte da execução."
+      : context.complexity === "critical"
+      ? `Por envolver ${joinListForSentence(context.sensitiveSignals.slice(0, 2)) || "regras sensíveis"}, pode ser necessário validar com mais cuidado alguns detalhes antes de fechar o fluxo definitivo.`
+      : "Dependências legadas, regras escondidas ou particularidades do ambiente atual podem exigir ajuste fino após a validação técnica.",
+    context.complexity === "simple"
+      ? "Se surgirem itens fora do escopo principal durante a execução, isso pode impactar prazo e exigir realinhamento."
       : "Mudanças fora do escopo principal podem impactar prazo se entrarem no meio da execução.",
   ];
 
@@ -355,55 +699,166 @@ function buildRisks(
 
 function calculateQualityScore(
   input: ProposalGenerationInput,
-  focusSkills: string[],
-  cautionMode: boolean,
+  context: ProjectContext,
 ): number {
-  let score = 72;
-  score += Math.min(12, input.matchedSkills.length * 4);
-  score += Math.min(8, focusSkills.length * 2);
-  score -= Math.min(15, input.missingSkills.length * 4);
-  score -= Math.min(12, input.riskFlags.length * 3);
-  score -= cautionMode ? 4 : 0;
+  let score = 70;
+  score += Math.min(12, context.focusSkills.length * 2);
+  score += Math.min(8, context.featureSignals.length * 2);
+  score += context.complexity === "critical" ? 4 : 0;
+  score -= Math.min(10, input.missingSkills.length * 3);
+  score -= input.riskFlags.includes("UNCLEAR_SCOPE") ? 4 : 0;
 
-  return Math.max(55, Math.min(94, score));
+  return Math.max(60, Math.min(96, score));
 }
 
-function selectVoiceStyle(input: ProposalGenerationInput): ProposalVoiceStyle {
-  const seedSource = [
-    input.opportunity.id,
-    input.opportunity.title ?? "",
-    input.amount,
-    input.deadlineDays,
-  ].join("|");
-  const seed = hashString(seedSource);
-  const styles: ProposalVoiceStyle[] = [
-    "consultivo",
-    "objetivo",
-    "parceiro",
-    "estrategico",
-  ];
+function humanizeCategory(category: ProjectCategory): string {
+  const dictionary: Record<ProjectCategory, string> = {
+    "institutional-site": "site institucional",
+    "landing-page": "landing page",
+    "wordpress-adjustment": "ajustes ou evolução em WordPress",
+    system: "sistema web",
+    integration: "integração com serviços externos",
+    frontend: "projeto web em front-end",
+    bugfix: "correção de bugs e ajustes",
+    dashboard: "dashboard ou painel administrativo",
+    "pdf-documents": "geração de PDF ou documentos",
+    "ai-project": "projeto com IA aplicada",
+    "generic-web": "projeto web sob medida",
+  };
 
-  return styles[seed % styles.length] ?? "consultivo";
+  return dictionary[category];
 }
 
-function inferClientGoal(opportunity: Opportunity, projectType: string): string {
-  const source = compactWhitespace(
-    `${opportunity.title ?? ""} ${opportunity.description ?? ""}`.toLowerCase(),
+function joinListForSentence(items: string[]): string {
+  const filtered = items.map((item) => compactWhitespace(item)).filter(Boolean);
+
+  if (filtered.length === 0) {
+    return "funcionalidades centrais do projeto";
+  }
+
+  if (filtered.length === 1) {
+    return filtered[0]!;
+  }
+
+  if (filtered.length === 2) {
+    return `${filtered[0]} e ${filtered[1]}`;
+  }
+
+  return `${filtered.slice(0, -1).join(", ")} e ${filtered.at(-1)}`;
+}
+
+function fitDetailsText(paragraphs: string[]): string {
+  let currentParagraphs = [...paragraphs];
+  let currentText = sanitizeProposalText(currentParagraphs.join("\n\n"));
+
+  if (currentText.length <= MAX_DETAILS_TEXT_LENGTH) {
+    return currentText;
+  }
+
+  while (currentText.length > MAX_DETAILS_TEXT_LENGTH) {
+    const trimOrder = [2, 1, 0];
+    const removableIndex =
+      trimOrder.find((index) => {
+        const paragraph = currentParagraphs[index] ?? "";
+        return countSentences(paragraph) > minimumSentencesForParagraph(index);
+      }) ?? -1;
+
+    if (removableIndex === -1) {
+      break;
+    }
+
+    currentParagraphs[removableIndex] = removeLastSentence(
+      currentParagraphs[removableIndex] ?? "",
+      minimumSentencesForParagraph(removableIndex),
+    );
+    currentText = sanitizeProposalText(currentParagraphs.join("\n\n"));
+  }
+
+  if (currentText.length <= MAX_DETAILS_TEXT_LENGTH) {
+    return currentText;
+  }
+
+  return trimToSentenceBoundary(currentText, MAX_DETAILS_TEXT_LENGTH);
+}
+
+function minimumSentencesForParagraph(index: number): number {
+  if (index === 0) {
+    return 5;
+  }
+
+  if (index === 1) {
+    return 2;
+  }
+
+  return 2;
+}
+
+function countSentences(value: string): number {
+  return splitSentences(value).length;
+}
+
+function removeLastSentence(value: string, minimumSentences = 2): string {
+  const normalized = compactWhitespace(value);
+  const parts = splitSentences(normalized);
+
+  if (parts.length <= minimumSentences) {
+    return normalized;
+  }
+
+  return parts.slice(0, -1).join(" ");
+}
+
+function trimToSentenceBoundary(value: string, maxLength: number): string {
+  const normalized = sanitizeProposalText(value);
+
+  if (normalized.length <= maxLength) {
+    return normalized;
+  }
+
+  const slice = normalized.slice(0, maxLength);
+  const maskedSlice = maskSentenceBoundaryExceptions(slice);
+  const lastBoundary = Math.max(
+    maskedSlice.lastIndexOf("."),
+    maskedSlice.lastIndexOf("!"),
+    maskedSlice.lastIndexOf("?"),
   );
 
-  if (/\bbug|erro|corre(?:ç|c)[aã]o|ajuste|manuten/.test(source)) {
-    return "colocar o fluxo para funcionar com mais estabilidade";
+  if (lastBoundary >= Math.floor(maxLength * 0.7)) {
+    return slice.slice(0, lastBoundary + 1).trim();
   }
 
-  if (/\blanding page\b|\blp\b/.test(source)) {
-    return "ter uma página mais convincente e pronta para conversão";
+  const lastSpace = slice.lastIndexOf(" ");
+  return slice.slice(0, lastSpace > 0 ? lastSpace : maxLength).trim();
+}
+
+function splitSentences(value: string): string[] {
+  const masked = maskSentenceBoundaryExceptions(compactWhitespace(value));
+
+  return masked
+    .split(/(?<=[.!?])\s+/)
+    .map((item) => unmaskSentenceBoundaryExceptions(compactWhitespace(item)))
+    .filter(Boolean);
+}
+
+function maskSentenceBoundaryExceptions(value: string): string {
+  return value
+    .replaceAll("Next.js", "Next§js")
+    .replaceAll("Node.js", "Node§js")
+    .replaceAll("Vue.js", "Vue§js")
+    .replaceAll("React.js", "React§js");
+}
+
+function unmaskSentenceBoundaryExceptions(value: string): string {
+  return value.replaceAll("§js", ".js");
+}
+
+function normalizeSentence(value: string): string {
+  const normalized = compactWhitespace(value).replace(/[.:;,-]+$/g, "");
+  if (!normalized) {
+    return normalized;
   }
 
-  if (/\bsite\b/.test(source)) {
-    return "tirar o site do papel com agilidade e boa apresentação";
-  }
-
-  return `avançar com ${projectType} de forma segura`;
+  return normalized.charAt(0).toLowerCase() + normalized.slice(1);
 }
 
 function hashString(value: string): number {
@@ -412,53 +867,4 @@ function hashString(value: string): number {
     hash = (hash * 31 + char.charCodeAt(0)) >>> 0;
   }
   return hash;
-}
-
-function joinListForSentence(items: string[]): string {
-  if (items.length === 0) {
-    return "tecnologias web aderentes ao projeto";
-  }
-
-  if (items.length === 1) {
-    return items[0] ?? "tecnologias web";
-  }
-
-  if (items.length === 2) {
-    return `${items[0]} e ${items[1]}`;
-  }
-
-  return `${items.slice(0, -1).join(", ")} e ${items.at(-1)}`;
-}
-
-function fitDetailsText(paragraphs: string[]): string {
-  const fullText = sanitizeProposalText(paragraphs.join("\n\n"));
-  if (fullText.length <= MAX_DETAILS_TEXT_LENGTH) {
-    return fullText;
-  }
-
-  const shortenedParagraphs = [
-    truncateText(paragraphs[0] ?? "", 320),
-    truncateText(paragraphs[1] ?? "", 420),
-    truncateText(paragraphs[2] ?? "", 240),
-  ].filter(Boolean);
-  const shortenedText = sanitizeProposalText(shortenedParagraphs.join("\n\n"));
-
-  if (shortenedText.length <= MAX_DETAILS_TEXT_LENGTH) {
-    return shortenedText;
-  }
-
-  return truncateText(shortenedText, MAX_DETAILS_TEXT_LENGTH);
-}
-
-function truncateText(value: string, maxLength: number): string {
-  const normalized = compactWhitespace(value);
-
-  if (normalized.length <= maxLength) {
-    return normalized;
-  }
-
-  const cutPoint = normalized.lastIndexOf(" ", maxLength - 4);
-  const safeCut = cutPoint >= Math.floor(maxLength * 0.6) ? cutPoint : maxLength - 3;
-
-  return `${normalized.slice(0, safeCut).trim()}...`;
 }

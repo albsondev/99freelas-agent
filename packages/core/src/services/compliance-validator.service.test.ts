@@ -27,5 +27,19 @@ describe("ComplianceValidatorService", () => {
     expect(result.flags).toContain("WHATSAPP_DETECTED");
     expect(result.flags).toContain("ABSOLUTE_GUARANTEE_DETECTED");
   });
-});
 
+  it("does not treat normal mentions of celular as off-platform contact", () => {
+    const service = new ComplianceValidatorService();
+    const result = service.validate({
+      title: "Refinamento de site institucional",
+      description: "Ajustes visuais e responsividade.",
+      skills: ["WordPress"],
+      detailsText:
+        "Olá, tudo bem? O foco aqui é melhorar a experiência do visitante e garantir que o site funcione bem em computador e celular. Posso conduzir os ajustes com cuidado visual, responsividade e organização do conteúdo.",
+    });
+
+    expect(result.status).toBe("APPROVED");
+    expect(result.flags).not.toContain("OFF_PLATFORM_CONTACT_DETECTED");
+    expect(result.flags).not.toContain("TOO_GENERIC");
+  });
+});

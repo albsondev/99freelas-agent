@@ -29,6 +29,7 @@ As sete primeiras entregas agora cobrem a base do monorepo, a persistencia, a AP
 - provider local-template para geracao automatizada de proposta sem custo por API
 - provider OpenAI opcional, preservado na arquitetura para evolucao futura
 - prompt versionado `proposal-v1` e estrategia local `proposal-template-v1`
+- estrategia local `proposal-template-v2` com familias de texto consultivo, competitivo, WordPress/sites, sistemas/bugs e humano/persuasivo
 - novo job `proposal.generate` encadeado apos o score
 - persistencia da proposta no Supabase com compliance, estrategia de preco e estrategia de prazo
 - endpoint manual `POST /opportunities/:id/generate-proposal` para regenerar proposta sem reimportar a oportunidade
@@ -50,12 +51,17 @@ As sete primeiras entregas agora cobrem a base do monorepo, a persistencia, a AP
 - coleta real da listagem de notificacoes e da listagem publica de projetos via `Python + Playwright`
 - scraper real da pagina publica do projeto para preencher titulo, descricao, categoria, contagem de propostas e interessados antes do score
 - score atualizado para refletir melhor o perfil aceito do freelancer, incluindo sites para advocacia, educacionais, landing pages e correcoes em stacks web aceitas
+- funil principal mais agressivo: na pratica, a triagem operacional trabalha em modo binario (`AUTO_SUBMIT` ou `REJECTED`) para evitar excesso de conservadorismo
+- logs do `autopilot:loop` com resumo por ciclo, paginas varridas, links coletados, lotes enviados e bloqueios operacionais
+- gerador de propostas refeito para usar contexto real do projeto em vez de textos engessados
+- validacao live concluida: observacao no browser, preenchimento automatico e envio real de proposta funcionando
+- deteccao de sucesso pos-envio reforcada para reconhecer melhor estados como `Melhorar proposta` e `Em andamento`
 
 ## Limites desta fase
 
-O repositorio ja executa a coleta real das listagens e o scraping real da pagina publica da oportunidade, mas ainda existem limites importantes.
+O repositorio ja executa a coleta real das listagens, o scraping real da pagina publica da oportunidade, o preenchimento automatico e o envio real validado em teste. Ainda assim, existem limites importantes.
 
-Nesta fase, o submit roda em modo seguro: ele preenche, revalida, coleta warnings, confere se o botao final esta habilitado e registra screenshots, mas nao clica em `Enviar proposta`.
+Por seguranca, o fluxo continua nascendo em modo seguro: ele preenche, revalida, coleta warnings, confere se o botao final esta habilitado e registra screenshots. O clique real so acontece quando voce liga explicitamente o modo live e confirma o comando.
 
 O `Live Observer Mode - Observacao` usa esse mesmo fluxo, mas com navegador visivel, delays entre etapas, selecao automatica da melhor proposta candidata e pausa antes do envio.
 
@@ -79,7 +85,7 @@ Para operacao mais segura no dia a dia, a configuracao padrao agora favorece `BR
 
 Quando o login no 99Freelas depender melhor do seu ambiente real do Chrome, tambem existe o modo `shared-profile`, mas ele deve ser tratado como apoio ao fluxo manual/observado no Chrome real, nao como automacao controlada garantida pelo worker.
 
-Tambem deixei a base configurada com `AUTOMATION_MODE="REVIEW_REQUIRED"` por padrao. A ideia aqui e comecar com um pipeline auditavel e seguro antes de habilitar qualquer submissao real. Isso protege sua conta, reputacao e evita automacoes ruins logo no inicio.
+Tambem deixei a base preparada para operar com `AUTOMATION_MODE="AUTOPILOT"` por padrao no `.env.example`, mas o envio real so acontece quando `ENABLE_REAL_99FREELAS_SUBMISSION=true`. Assim, o projeto nasce pronto para captar, triar e gerar propostas com agressividade comercial, sem ligar o clique real por acidente.
 
 Outro limite importante: os valores medios e duracoes medias das propostas dependem da pagina autenticada de envio da proposta. A pagina publica do projeto nao exibe esses valores de forma aberta, entao o sistema combina a leitura da pagina publica para triagem com a leitura da pagina autenticada para decidir preco e prazo finais.
 
@@ -212,7 +218,7 @@ PYTHON_EXECUTABLE="./.venv/bin/python"
 PYTHON_BROWSER_NAME="chromium"
 PYTHON_BROWSER_PROFILE_DIR="./.auth/99freelas.python-profile"
 PYTHON_BROWSER_STORAGE_STATE_PATH="./.auth/99freelas.python-storage-state.json"
-AUTOMATION_MODE="REVIEW_REQUIRED"
+AUTOMATION_MODE="AUTOPILOT"
 ENABLE_REAL_99FREELAS_SUBMISSION=false
 ```
 
@@ -291,7 +297,7 @@ Esse comando faz:
 - salva novas oportunidades no Supabase
 - faz parse real da pagina do projeto
 - aplica score, risco e compatibilidade
-- gera proposta apenas para o que nao for rejeitado pelos guardrails
+- gera proposta para tudo o que passar pelo funil binario (`AUTO_SUBMIT`) e rejeita o resto
 
 4. Se quiser forcar apenas notificacoes:
 
@@ -348,6 +354,52 @@ AUTOMATION_MODE="AUTOPILOT"
 ENABLE_REAL_99FREELAS_SUBMISSION=true
 ```
 
+### 4.1. Passo a passo rapido para usar hoje
+
+Se voce quer simplesmente rodar ainda hoje, use este roteiro:
+
+```bash
+pnpm install
+python3 -m venv .venv
+./.venv/bin/python -m pip install -r apps/browser-runner/requirements.txt
+./.venv/bin/python -m playwright install chromium
+cp .env.example .env.local
+```
+
+Edite o `.env.local` e confira pelo menos:
+
+```bash
+BROWSER_AUTOMATION_RUNTIME="python-playwright"
+PYTHON_EXECUTABLE="./.venv/bin/python"
+AUTOMATION_MODE="AUTOPILOT"
+ENABLE_REAL_99FREELAS_SUBMISSION=false
+```
+
+Depois rode:
+
+```bash
+pnpm auth:99freelas
+pnpm session:check
+pnpm source:smart
+pnpm proposal:observe
+```
+
+Quando quiser deixar a IA trabalhar sozinha com envio real:
+
+```bash
+# 1) ligue no .env.local
+ENABLE_REAL_99FREELAS_SUBMISSION=true
+
+# 2) rode o loop continuo
+pnpm autopilot:loop -- --batch-size 3 --poll-interval-ms 60000
+```
+
+Quando terminar:
+
+```bash
+pnpm session:shutdown
+```
+
 ### 5. Encerramento
 
 Quando terminar o uso do navegador dedicado em segundo plano:
@@ -372,10 +424,10 @@ pnpm dev
 
 ## Proximos passos
 
-Com a Fase 8 praticamente fechada, os proximos passos ficam assim:
+Com a Fase 8 funcionalmente validada, os proximos passos ficam assim:
 
-- validar um envio live controlado com proposta de baixo risco e conta monitorada
-- registrar o resultado final no bucket/auditoria do Supabase
+- ampliar a deteccao automatica de sucesso pos-envio com mais snapshots reais
+- registrar mais evidencias no bucket/auditoria do Supabase
 - decidir quando habilitar o job automatico de submit fora do modo manual
 
 ## Regra de sourcing
@@ -411,6 +463,35 @@ Notas praticas:
 - para captacao manual assistida, `source:smart` e o melhor ponto de partida
 - para automacao continua com fila, API e worker persistente, ai sim vale subir Redis e usar `pnpm dev:worker`
 - hoje o caminho mais simples e robusto e deixar a sessao dedicada Python ativa e disparar os comandos do worker sob demanda
+- o modo de decisao atual esta mais agressivo comercialmente: se o projeto passar nas regras duras do seu perfil, a tendencia e ir para `AUTO_SUBMIT`
+- `batch-size` e a quantidade maxima de propostas que o `autopilot:loop` tenta processar por ciclo antes de dormir e iniciar uma nova varredura
+
+## Estado atual
+
+Hoje o projeto pode ser considerado pronto para uso real com as seguintes garantias:
+
+- sourcing por notificacoes e listagem publica funcionando
+- triagem automatica conforme o seu perfil tecnico/comercial
+- proposta gerada com contexto do projeto, stack, sinais comerciais e media real da pagina autenticada
+- modo observacao funcionando no Chromium dedicado
+- envio real ja validado em teste manual acompanhado
+
+O principal cuidado operacional continua sendo manter `ENABLE_REAL_99FREELAS_SUBMISSION=true` apenas quando voce realmente quiser liberar clique final automatico.
+
+## Resultado de um teste real recente
+
+Em um teste completo de `autopilot:loop` com `2 ciclos`, `batch-size 3` e navegador visivel:
+
+- ciclo 1: `4 proposta(s) enviada(s)` de verdade
+- ciclo 1: `4 bloqueada(s)/pendente(s)` por limites operacionais e residuos de lote
+- ciclo 2: nenhuma novidade, nenhuma proposta reenviada
+- varredura publica: `15 pagina(s)` e `154 link(s)` por ciclo
+
+Isso e exatamente o comportamento esperado para rodar por horas:
+
+- primeiro ele esgota o que esta elegivel
+- depois entra em ritmo de vigilancia, sem retrabalho
+- se bater limite horario, segura e tenta novamente no proximo ciclo
 
 ## Observacao ao vivo
 

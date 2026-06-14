@@ -32,6 +32,10 @@ SUCCESS_TEXT_HINTS = [
     "Sua proposta foi enviada com sucesso",
     "Enviou Proposta",
     "Melhorar proposta",
+    "Em andamento",
+    "Proposta enviada",
+    "Você já enviou uma proposta",
+    "Voce ja enviou uma proposta",
 ]
 AUTH_BOOTSTRAP_TIMEOUT_MS = 15 * 60 * 1000
 AUTH_BOOTSTRAP_POLL_INTERVAL_MS = 2000

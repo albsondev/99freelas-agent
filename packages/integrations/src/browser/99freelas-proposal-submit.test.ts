@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   assessSubmissionReadiness,
+  detect99FreelasSubmissionSuccess,
   extract99FreelasProposalWarnings,
 } from "./99freelas-proposal-submit.js";
 
@@ -83,5 +84,31 @@ Outro texto irrelevante.
         submitButtonEnabled: true,
       }),
     ).toContain("Projeto ja possui proposta enviada anteriormente.");
+  });
+
+  it("detects successful submission from post-submit signals even on the same URL", () => {
+    expect(
+      detect99FreelasSubmissionSuccess({
+        currentUrl:
+          "https://www.99freelas.com.br/project/bid/atualizacao-de-site-profissional-para-galeria-de-arte-e-portfolio-754618",
+        proposalPageUrl:
+          "https://www.99freelas.com.br/project/bid/atualizacao-de-site-profissional-para-galeria-de-arte-e-portfolio-754618",
+        snapshot: `
+Atualização de site profissional para galeria de arte e portfólio
+Em andamento
+Melhorar proposta
+        `,
+        page: {
+          averageBidAmount: 820.76,
+          averageDeadlineDays: 8,
+          minimumOfferAmount: 50,
+          availableConnections: 257,
+          requiredConnections: 1,
+          hasProposalForm: true,
+          hasExistingProposal: true,
+          hasQuestionChannel: true,
+        },
+      }),
+    ).toBe(true);
   });
 });

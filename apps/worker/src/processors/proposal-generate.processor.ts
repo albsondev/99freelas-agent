@@ -172,10 +172,7 @@ export async function processProposalGenerateJob(
 
   const score: ScoreResult = {
     score: opportunity.score ?? 0,
-    decisionHint:
-      opportunity.decision === "AUTO_SUBMIT"
-        ? "AUTO_SUBMIT"
-        : "REVIEW_REQUIRED",
+    decisionHint: "AUTO_SUBMIT",
     reasons: opportunity.decisionReasons,
     matchedSkills: opportunity.matchedSkills,
     missingSkills: opportunity.missingSkills,

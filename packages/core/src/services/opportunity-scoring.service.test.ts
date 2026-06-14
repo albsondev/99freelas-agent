@@ -78,7 +78,7 @@ describe("OpportunityScoringService", () => {
     expect(result.riskFlags).toContain("FULL_ECOMMERCE_SCOPE");
   });
 
-  it("keeps simple React Native bugfixes in review instead of hard rejection", () => {
+  it("allows simple React Native bugfixes to pass instead of hard rejection", () => {
     const service = new OpportunityScoringService();
     const result = service.score({
       title: "Ajuste rapido em React Native",
@@ -92,11 +92,11 @@ describe("OpportunityScoringService", () => {
       clientRating: 4.9,
     });
 
-    expect(result.decisionHint).toBe("REVIEW_REQUIRED");
+    expect(result.decisionHint).toBe("AUTO_SUBMIT");
     expect(result.riskFlags).not.toContain("NATIVE_APP_SCOPE");
   });
 
-  it("keeps lawyer website requests in review when they match the preferred profile", () => {
+  it("approves lawyer website requests when they match the preferred profile", () => {
     const service = new OpportunityScoringService();
     const result = service.score({
       title: "Site para marca de advogado",
@@ -107,7 +107,7 @@ describe("OpportunityScoringService", () => {
       proposalCount: 86,
     });
 
-    expect(result.decisionHint).toBe("REVIEW_REQUIRED");
+    expect(result.decisionHint).toBe("AUTO_SUBMIT");
     expect(result.score).toBeGreaterThanOrEqual(60);
     expect(result.reasons).toContain("Projeto de site para advocacia entra no perfil aceito.");
   });
@@ -126,6 +126,22 @@ describe("OpportunityScoringService", () => {
     });
 
     expect(result.riskFlags).toContain("WORDPRESS_COMPLEX_SCOPE");
-    expect(result.decisionHint).not.toBe("AUTO_SUBMIT");
+    expect(result.decisionHint).toBe("REJECTED");
+  });
+
+  it("rejects multi-step WordPress redesign and blog adjustments", () => {
+    const service = new OpportunityScoringService();
+    const result = service.score({
+      title: "Configuração de blog WordPress com Elementor Pro - identidade visual jurídica",
+      description:
+        "Site de advocacia previdenciária com WordPress e Elementor Pro. O que precisa ser feito: 1. corrigir o template de Archive do blog, 2. adicionar Blog ao menu de navegação, 3. criar template de Single Post, 4. excluir templates duplicados, 5. documentar o processo de publicação com passo a passo e SEO no Yoast, 6. verificar header e footer globais. O blog deve seguir a identidade visual do escritório.",
+      category: "Web, Mobile & Software / UX/UI & Web Design",
+      skills: ["WordPress"],
+      proposalCount: 42,
+      averageDeadlineDays: 3,
+    });
+
+    expect(result.riskFlags).toContain("WORDPRESS_COMPLEX_SCOPE");
+    expect(result.decisionHint).toBe("REJECTED");
   });
 });

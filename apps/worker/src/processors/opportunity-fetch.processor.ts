@@ -206,6 +206,14 @@ async function runSourcingPlan(
     const huntLimit = step.action === "HUNT_PROJECT_LIST"
       ? Math.max(20, huntMaxPages * 20)
       : 20;
+    const stepLabel =
+      step.action === "PROCESS_RECOMMENDED_NOTIFICATIONS" ? "notificacoes" : "projetos";
+    const stepStartedAt = Date.now();
+
+    console.log(
+      `[Triagem ${stepLabel}] Coletando links em ${listingUrl}` +
+        (step.action === "HUNT_PROJECT_LIST" ? ` (ate ${huntMaxPages} pagina(s))...` : "..."),
+    );
 
     const collected = await collectProjectListingsViaPython({
       browserName: context.env.PYTHON_BROWSER_NAME,
@@ -223,6 +231,13 @@ async function runSourcingPlan(
       storageStatePath: context.env.PYTHON_BROWSER_STORAGE_STATE_PATH,
       timeoutMs: step.action === "HUNT_PROJECT_LIST" ? 90_000 : 60_000,
     });
+
+    const stepElapsedSeconds = ((Date.now() - stepStartedAt) / 1000).toFixed(1);
+
+    console.log(
+      `[Triagem ${stepLabel}] Coleta concluida em ${stepElapsedSeconds}s: ` +
+        `${collected.pagesVisited} pagina(s), ${collected.items.length} link(s).`,
+    );
 
     const decisionReasonCounts = new Map<string, number>();
     const riskFlagCounts = new Map<string, number>();

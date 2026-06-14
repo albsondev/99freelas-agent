@@ -27,7 +27,7 @@ const TELEGRAM_PATTERN = /\btelegram\b/i;
 const ABSOLUTE_GUARANTEE_PATTERN =
   /\b(?:100%\s*garantido|garantia total|sem erro nenhum|resultado garantido|garanto\s*100%|100%\s*de\s*sucesso)\b/i;
 const GENERIC_PATTERN =
-  /\b(?:tenho interesse no projeto|ol[aá], tudo bem|posso ajudar em qualquer demanda)\b/i;
+  /\b(?:tenho interesse no projeto|posso ajudar em qualquer demanda|fa[oç]o qualquer tipo de projeto|pego qualquer demanda)\b/i;
 const AGGRESSIVE_PATTERN =
   /\b(?:melhor do mercado|imperd[ií]vel|fecho hoje sem falta)\b/i;
 
@@ -95,7 +95,7 @@ export class ComplianceValidatorService {
       blockingReasons.push("Texto promete garantia absoluta.");
     }
 
-    if (GENERIC_PATTERN.test(text)) {
+    if (GENERIC_PATTERN.test(text) || isGreetingOnlyGeneric(text)) {
       flags.push("TOO_GENERIC");
     }
 
@@ -131,11 +131,7 @@ export class ComplianceValidatorService {
       "ABSOLUTE_GUARANTEE_DETECTED",
     ]);
 
-    const status = blockingReasons.length > 0
-      ? "BLOCKED"
-      : flags.some((flag) => !criticalFlags.has(flag))
-        ? "REVIEW_REQUIRED"
-        : "APPROVED";
+    const status = blockingReasons.length > 0 ? "BLOCKED" : "APPROVED";
 
     return {
       status,
@@ -143,4 +139,15 @@ export class ComplianceValidatorService {
       blockingReasons,
     };
   }
+}
+
+function isGreetingOnlyGeneric(text: string): boolean {
+  const normalized = text.toLowerCase();
+  const hasGreeting = /\bol[aá],?\s+tudo bem\b/i.test(normalized);
+  const lacksContextSignals =
+    !/\b(?:wordpress|react|next|vue|php|laravel|dashboard|api|site|landing page|portf[oó]lio|responsividade|integra(?:ç|c)(?:a|ã)o|bug|erro|sistema)\b/i.test(
+      normalized,
+    );
+
+  return hasGreeting && text.length < 180 && lacksContextSignals;
 }

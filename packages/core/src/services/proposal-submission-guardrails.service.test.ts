@@ -75,9 +75,6 @@ describe("ProposalSubmissionGuardrailsService", () => {
       "Compliance bloqueou a proposta para envio real.",
     );
     expect(result.blockingReasons).toContain(
-      "Score abaixo do minimo configurado para envio real.",
-    );
-    expect(result.blockingReasons).toContain(
       "Botao de envio nao esta habilitado.",
     );
     expect(result.warnings).toHaveLength(1);

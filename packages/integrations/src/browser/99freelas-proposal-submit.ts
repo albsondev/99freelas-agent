@@ -268,7 +268,12 @@ async function run99FreelasProposalSubmission(
       currentUrl = page.url();
       postSubmitUrl = currentUrl;
       postSubmitHasProposalForm = postSubmitSignals.hasProposalForm;
-      submitted = currentUrl !== proposalPageUrl || !postSubmitSignals.hasProposalForm;
+      submitted = detect99FreelasSubmissionSuccess({
+        currentUrl,
+        proposalPageUrl,
+        snapshot: postSubmitSnapshot,
+        page: postSubmitSignals,
+      });
     }
 
     if (afterScreenshotPath) {
@@ -383,6 +388,33 @@ export function assessSubmissionReadiness(input: {
   }
 
   return blockingReasons;
+}
+
+export function detect99FreelasSubmissionSuccess(input: {
+  currentUrl: string;
+  proposalPageUrl: string;
+  snapshot: string;
+  page: ProposalPageSnapshot;
+}): boolean {
+  const normalized = input.snapshot.toLowerCase();
+
+  if (
+    normalized.includes("sua proposta foi enviada com sucesso") ||
+    normalized.includes("proposta enviada") ||
+    normalized.includes("enviou proposta") ||
+    normalized.includes("melhorar proposta") ||
+    normalized.includes("em andamento") ||
+    normalized.includes("você já enviou uma proposta") ||
+    normalized.includes("voce ja enviou uma proposta")
+  ) {
+    return true;
+  }
+
+  if (input.currentUrl !== input.proposalPageUrl) {
+    return true;
+  }
+
+  return !input.page.hasProposalForm;
 }
 
 export function extract99FreelasProposalWarnings(snapshot: string): string[] {

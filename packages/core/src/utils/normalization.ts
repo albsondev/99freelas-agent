@@ -30,7 +30,7 @@ const URL_PATTERN = /\b(?:https?:\/\/|www\.)\S+\b/i;
 const PHONE_PATTERN =
   /(?:\+?\d{1,3}\s*)?(?:\(?\d{2}\)?\s*)?(?:9?\d{4}[-\s]?\d{4}|\d{4}[-\s]?\d{4})/;
 const OFF_PLATFORM_CONTACT_PATTERN =
-  /\b(?:whatsapp|telegram|telefone|celular|e-mail|email|contato fora|fale comigo por fora|me chama)\b/i;
+  /\b(?:contato fora|fale comigo por fora|me chama|me chame|chama no|falar por fora|conversar por fora|passo meu contato|te mando meu contato)\b/i;
 const SUSPICIOUS_PAYMENT_PATTERN =
   /\b(?:pix por fora|pagamento por fora|fora da plataforma|transfer[êe]ncia direta|dep[óo]sito direto)\b/i;
 

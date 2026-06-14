@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { createConnection } from "node:net";
 import { tmpdir } from "node:os";
 import { dirname, resolve } from "node:path";
@@ -261,6 +261,10 @@ async function runWithDaemonFallback<T>(
     return runPythonCommandDirect<T>(command, payload, timeoutMs);
   }
 
+  if (shouldBypassVisibleDaemon(command, payload)) {
+    return runPythonCommandDirect<T>(command, payload, timeoutMs);
+  }
+
   return runVisibleCommandWithDaemon<T>(
     command,
     payload as PythonRunnerConfig,
@@ -307,6 +311,28 @@ function wantsVisibleBrowser(payload: unknown): boolean {
     payload !== null &&
     "headless" in payload &&
     payload.headless === false
+  );
+}
+
+function shouldBypassVisibleDaemon(
+  command: DirectCommandName,
+  payload: unknown,
+): boolean {
+  if (command !== "proposal-submit") {
+    return false;
+  }
+
+  if (typeof payload !== "object" || payload === null || !("observer" in payload)) {
+    return false;
+  }
+
+  const observer = payload.observer;
+
+  return (
+    typeof observer === "object" &&
+    observer !== null &&
+    "enabled" in observer &&
+    observer.enabled === true
   );
 }
 
@@ -486,11 +512,44 @@ async function runPythonCommandDirect<T>(
       throw new Error(`${directMessage}${daemonMessage}`);
     }
 
-    const raw = await readFile(outputPath, "utf8");
+    const raw = await readRunnerOutputFile(outputPath, command, stderrChunks);
     return JSON.parse(raw) as T;
   } finally {
     await rm(workdir, { recursive: true, force: true });
   }
+}
+
+async function readRunnerOutputFile(
+  outputPath: string,
+  command: DirectCommandName,
+  stderrChunks: Buffer[],
+): Promise<string> {
+  const stderr = Buffer.concat(stderrChunks).toString("utf8").trim();
+
+  for (let attempt = 0; attempt < 10; attempt += 1) {
+    try {
+      await stat(outputPath);
+      return await readFile(outputPath, "utf8");
+    } catch (error) {
+      if (!(error instanceof Error) || !("code" in error) || error.code !== "ENOENT") {
+        throw error;
+      }
+
+      await new Promise((resolvePromise) => {
+        setTimeout(resolvePromise, 100);
+      });
+    }
+  }
+
+  if (stderr.length > 0) {
+    throw new Error(
+      `Python runner direct command ${command} finalizou sem gerar output. stderr: ${stderr}`,
+    );
+  }
+
+  throw new Error(
+    `Python runner direct command ${command} finalizou sem gerar o arquivo runner-output.json.`,
+  );
 }
 
 function extractPythonExecutable(payload: unknown): string {
