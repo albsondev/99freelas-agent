@@ -1,16 +1,5 @@
 node_modules
-.pnpm-store
-.turbo
 dist
-coverage
-.next
 .DS_Store
 .env
 .env.local
-.auth
-.audit
-.temp
-supabase/.temp
-__pycache__
-*.pyc
-*.tsbuildinfo

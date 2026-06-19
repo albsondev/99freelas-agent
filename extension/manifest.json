@@ -1,0 +1,35 @@
+{
+  "manifest_version": 3,
+  "name": "99Freelas Proposal Prefill",
+  "version": "1.0.0",
+  "description": "Abre um projeto do 99Freelas, gera a proposta com Gemini e preenche o formulario sem enviar.",
+  "permissions": [
+    "storage",
+    "tabs",
+    "scripting"
+  ],
+  "host_permissions": [
+    "https://www.99freelas.com.br/*",
+    "https://generativelanguage.googleapis.com/*"
+  ],
+  "action": {
+    "default_title": "99Freelas Proposal Prefill",
+    "default_popup": "popup.html"
+  },
+  "options_page": "options.html",
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://www.99freelas.com.br/project/*"
+      ],
+      "js": [
+        "shared.js",
+        "content.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ]
+}

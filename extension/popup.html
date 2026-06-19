@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>99Freelas Proposal Prefill</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body class="popup-body">
+    <main class="panel">
+      <h1>Preencher proposta</h1>
+      <p class="subtitle">
+        Cole a URL de um projeto do 99Freelas. A extensão abrirá o projeto, gerará a proposta com Gemini e preencherá o formulário sem enviar.
+      </p>
+
+      <label class="field">
+        <span>URL do projeto</span>
+        <input
+          id="projectUrl"
+          type="url"
+          placeholder="https://www.99freelas.com.br/project/..."
+        />
+      </label>
+
+      <div class="actions">
+        <button id="fillButton" class="primary-button">Abrir e preencher</button>
+        <button id="optionsButton" class="secondary-button">Opções</button>
+      </div>
+
+      <div id="status" class="status"></div>
+    </main>
+    <script src="popup.js"></script>
+  </body>
+</html>
